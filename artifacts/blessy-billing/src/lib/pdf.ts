@@ -50,7 +50,7 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   y += copyRowH;
 
   // ── SELLER + INVOICE DETAILS ───────────────────────────────────────────
-  const sellerBoxH = 36;
+  const sellerBoxH = 42;
   const halfW = pageW / 2;
 
   // Seller box (left)
@@ -75,27 +75,30 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   const rx = margin + halfW;
   doc.rect(rx, y, halfW, sellerBoxH);
 
-  normalText("Invoice No.:", rx + 2, y + 6, 7.5);
-  boldText(invoice.invoiceNumber, rx + 28, y + 6, 8);
-  normalText("Dated:", rx + halfW / 2, y + 6, 7.5);
+  // Invoice details: left sub-column labels at rx+2, values at rx+38
+  const labelCol = rx + 2;
+  const valueCol = rx + 38;
+  normalText("Invoice No.:", labelCol, y + 6, 7.5);
+  boldText(invoice.invoiceNumber, valueCol, y + 6, 8);
+  normalText("Dated:", labelCol, y + 13, 7.5);
   boldText(
     new Date(invoice.invoiceDate)
       .toLocaleDateString("en-IN", { day: "numeric", month: "numeric", year: "numeric" })
       .replace(/\//g, "-"),
-    rx + halfW / 2 + 15,
-    y + 6,
+    valueCol,
+    y + 13,
     8
   );
-  normalText("Delivery Note:", rx + 2, y + 13, 7.5);
-  normalText("Supplier's Ref.:", rx + 2, y + 20, 7.5);
-  normalText("Other References", rx + halfW / 2, y + 20, 7.5);
-  normalText("Buyers Order No.:", rx + 2, y + 27, 7.5);
-  normalText(invoice.buyersOrderNo || "", rx + 36, y + 27, 7.5);
+  normalText("Delivery Note:", labelCol, y + 20, 7.5);
+  normalText("Supplier's Ref.:", labelCol, y + 27, 7.5);
+  normalText(invoice.suppliersRef || "Other References", valueCol, y + 27, 7.5);
+  normalText("Buyers Order No.:", labelCol, y + 34, 7.5);
+  normalText(invoice.buyersOrderNo || "", valueCol, y + 34, 7.5);
 
   y += sellerBoxH;
 
   // ── BUYER INFO ─────────────────────────────────────────────────────────
-  const buyerBoxH = 28;
+  const buyerBoxH = 38;
   const buyerMidX = margin + halfW;
 
   doc.rect(margin, y, pageW, buyerBoxH);
@@ -104,24 +107,30 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   // Left side: buyer name + address
   boldText("BUYER'S INFO :", margin + 2, y + 5, 8);
   boldText(invoice.buyer.name, margin + 2, y + 11, 9);
-  const bLines = invoice.buyer.address.split(/,|;|\n/).filter(Boolean);
+  const bLines = invoice.buyer.address.split(/\n|,|;/).filter(Boolean);
   let by = y + 17;
-  bLines.slice(0, 2).forEach((l) => {
+  bLines.slice(0, 3).forEach((l) => {
     normalText(l.trim(), margin + 2, by, 7.5);
     by += 4;
   });
-  normalText(`GST NO.: ${invoice.buyer.gstNumber}`, margin + 2, by, 7.5);
+  if (invoice.buyer.gstNumber) {
+    normalText("GST NO.: ", margin + 2, by, 7.5);
+    boldText(invoice.buyer.gstNumber, margin + 18, by, 7.5);
+  }
 
-  // Right side: despatch details
+  // Right side: despatch details — labels left-aligned at dx, values indented at dx+42
   const dx = buyerMidX + 2;
+  const dv = dx + 44; // value column for despatch fields
   normalText("Despatch Document No.:", dx, y + 5, 7.5);
-  normalText("Delivery Note Dated", dx + 52, y + 5, 7.5);
-  normalText("Despatch Through :", dx, y + 13, 7.5);
-  boldText(invoice.despatchThrough || "BY ROAD", dx + 36, y + 13, 7.5);
-  normalText("Destination:", dx + 58, y + 13, 7.5);
-  boldText(invoice.destination || invoice.buyer.state || "", dx + 74, y + 13, 7.5);
-  normalText("Bill of Landing/LR-RR No.:", dx, y + 21, 7.5);
-  normalText("Motor vehicle No.:", dx + 58, y + 21, 7.5);
+  normalText(invoice.despatchDocNo || "", dv, y + 5, 7.5);
+  normalText("Delivery Note Dated:", dx, y + 11, 7.5);
+  normalText("Despatch Through :", dx, y + 17, 7.5);
+  boldText(invoice.despatchThrough || "BY ROAD", dv, y + 17, 7.5);
+  normalText("Destination:", dx, y + 23, 7.5);
+  boldText(invoice.destination || invoice.buyer.state || "", dv, y + 23, 7.5);
+  normalText("Bill of Landing/LR-RR No.:", dx, y + 28, 7.5);
+  normalText("Motor vehicle No.:", dx, y + 34, 7.5);
+  normalText(invoice.motorVehicleNo || "", dv, y + 34, 7.5);
 
   y += buyerBoxH;
 
@@ -197,23 +206,23 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   }
 
   // ── TOTALS ─────────────────────────────────────────────────────────────
-  const totalsX = margin + pageW - 90;
-  const labelX = totalsX;
-  const valX = W - margin - 2;
-  const rowH = 6;
+  const totalsX = margin + pageW - 95;
+  const labelX  = totalsX + 2;   // label left-indent inside the box
+  const pctX    = totalsX + 58;  // percentage column centre
+  const valX    = W - margin - 2; // value right-aligned
+  const rowH    = 6;
 
-  // Count how many total rows we'll draw to size the vertical line correctly
   const extraRows = invoice.otherCharges > 0 ? 1 : 0;
-  const totalRows = 7 + extraRows; // before-tax, cgst, sgst, igst, tax-amt, after-tax, payable + optional other
+  const totalRows = 7 + extraRows;
   const totalsStartY = y;
 
   vline(totalsX, totalsStartY, totalsStartY + rowH * totalRows);
 
   function totalRow(label: string, value: string, pct?: string, bold = false) {
-    if (bold) { doc.setFont("helvetica", "bold"); } else { doc.setFont("helvetica", "normal"); }
     doc.setFontSize(8);
-    doc.text(label, labelX + 2, y + 4);
-    if (pct) doc.text(pct, labelX + 60, y + 4, { align: "center" });
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.text(label, labelX, y + 4);
+    if (pct) doc.text(pct, pctX, y + 4, { align: "center" });
     doc.text(value, valX, y + 4, { align: "right" });
     line(y + rowH);
     y += rowH;
@@ -263,10 +272,19 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   normalText("along with transporter invoice copy", margin + 2, footerY + 11, 7.5);
   normalText("Reciver Signature", margin + 10, footerY + footerH - 4, 7.5);
 
-  boldText("Company's Bank Details", margin + halfW + 2, footerY + 6, 8);
-  normalText(`Bank Name :   ${settings.bankName}`, margin + halfW + 2, footerY + 13, 7.5);
-  normalText(`A/C No. :      ${settings.accountNumber}`, margin + halfW + 2, footerY + 19, 7.5);
-  normalText(`Branch & IFSC Code :   ${settings.ifscCode}`, margin + halfW + 2, footerY + 25, 7.5);
+  const bankLabelX = margin + halfW + 2;
+  const bankValueX = margin + halfW + 34;
+  boldText("Company's Bank Details", bankLabelX, footerY + 6, 8);
+  normalText("Bank Name :", bankLabelX, footerY + 13, 7.5);
+  normalText(settings.bankName, bankValueX, footerY + 13, 7.5);
+  normalText("A/C No. :", bankLabelX, footerY + 19, 7.5);
+  normalText(settings.accountNumber, bankValueX, footerY + 19, 7.5);
+  normalText("IFSC Code :", bankLabelX, footerY + 25, 7.5);
+  normalText(settings.ifscCode, bankValueX, footerY + 25, 7.5);
+  if (settings.branchName) {
+    normalText("Branch :", bankLabelX, footerY + 31, 7.5);
+    normalText(settings.branchName, bankValueX, footerY + 31, 7.5);
+  }
 
   y += footerH;
 
