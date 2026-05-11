@@ -156,39 +156,69 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   y += headerH;
 
   // ── ITEMS ──────────────────────────────────────────────────────────────
-  invoice.items.forEach((item, idx) => {
-    const rowH = 16;
-    const rowStartY = y;
-    cx = margin;
+  const lineH = 4.5;   // mm per text line
+  const cellPadT = 5;  // top padding inside cell
+  const cellPadB = 4;  // bottom padding
 
+  invoice.items.forEach((item, idx) => {
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
 
-    doc.text(String(idx + 1), margin + cols.sno / 2, y + 5, { align: "center" });
+    // Split product name and description into wrapped lines to calculate row height
+    const descMaxW = cols.desc - 4;
+    const nameLines: string[] = doc.splitTextToSize(item.productName, descMaxW);
+
+    // Support Enter key line breaks AND auto-wrap within each line
+    const rawDescLines = item.description ? item.description.split(/\r?\n/) : [];
+    const descLines: string[] = rawDescLines.flatMap((l) =>
+      l.trim() ? doc.splitTextToSize(l.trim(), descMaxW) : [""]
+    );
+    const totalTextLines = nameLines.length + (descLines.length > 0 && item.description ? descLines.length : 0);
+    const rowH = Math.max(14, cellPadT + totalTextLines * lineH + cellPadB);
+
+    const rowStartY = y;
+    cx = margin;
+
+    // S.No — vertically centred
+    doc.text(String(idx + 1), margin + cols.sno / 2, y + rowH / 2, { align: "center", baseline: "middle" });
     cx += cols.sno;
 
-    doc.text(item.productName, cx + 2, y + 5);
-    if (item.description) doc.text(item.description, cx + 2, y + 10, { maxWidth: cols.desc - 4 });
+    // Description column — name bold, then description lines normal
+    doc.setFont("helvetica", "bold");
+    let textY = y + cellPadT;
+    nameLines.forEach((l) => {
+      doc.text(l, cx + 2, textY);
+      textY += lineH;
+    });
+    if (item.description) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      descLines.forEach((l) => {
+        doc.text(l, cx + 2, textY);
+        textY += lineH;
+      });
+      doc.setFontSize(8);
+    }
     cx += cols.desc;
 
-    doc.text(item.hsnCode, cx + cols.hsn / 2, y + 5, { align: "center" });
+    // Remaining columns — vertically centred
+    const midY = y + rowH / 2;
+    doc.setFont("helvetica", "normal");
+    doc.text(item.hsnCode, cx + cols.hsn / 2, midY, { align: "center", baseline: "middle" });
     cx += cols.hsn;
-
-    doc.text(`${item.gstPercent}%`, cx + cols.gst / 2, y + 5, { align: "center" });
+    doc.text(`${item.gstPercent}%`, cx + cols.gst / 2, midY, { align: "center", baseline: "middle" });
     cx += cols.gst;
-
-    doc.text(String(item.quantity), cx + cols.qty / 2, y + 5, { align: "center" });
+    doc.text(String(item.quantity), cx + cols.qty / 2, midY, { align: "center", baseline: "middle" });
     cx += cols.qty;
-
-    doc.text(String(item.rate), cx + cols.rate / 2, y + 5, { align: "center" });
+    doc.text(String(item.rate), cx + cols.rate / 2, midY, { align: "center", baseline: "middle" });
     cx += cols.rate;
-
-    doc.text(item.unit, cx + cols.unit / 2, y + 5, { align: "center" });
+    doc.text(item.unit, cx + cols.unit / 2, midY, { align: "center", baseline: "middle" });
     cx += cols.unit;
+    doc.setFont("helvetica", "bold");
+    doc.text(String(Math.round(item.amount)), W - margin - 2, midY, { align: "right", baseline: "middle" });
+    doc.setFont("helvetica", "normal");
 
-    doc.text(String(Math.round(item.amount)), W - margin - 2, y + 5, { align: "right" });
-
-    // Draw column dividers for this row
+    // Column dividers spanning full dynamic row height
     let divX = margin;
     widths.forEach((w, i) => {
       divX += w;

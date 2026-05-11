@@ -14,6 +14,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -102,6 +103,10 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
   const [destination, setDestination] = useState("");
   const [buyersOrderNo, setBuyersOrderNo] = useState("");
   const [transportMode, setTransportMode] = useState("");
+  const [motorVehicleNo, setMotorVehicleNo] = useState("");
+  const [billOfLadingNo, setBillOfLadingNo] = useState("");
+  const [deliveryNote, setDeliveryNote] = useState("");
+  const [suppliersRef, setSuppliersRef] = useState("");
   const [status, setStatus] = useState<"draft" | "finalized">("draft");
 
   useEffect(() => {
@@ -134,6 +139,10 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
           setDespatchThrough(inv.despatchThrough);
           setDestination(inv.destination);
           setBuyersOrderNo(inv.buyersOrderNo);
+          setMotorVehicleNo(inv.motorVehicleNo || "");
+          setBillOfLadingNo(inv.billOfLadingNo || "");
+          setDeliveryNote(inv.deliveryNote || "");
+          setSuppliersRef(inv.suppliersRef || "");
           setStatus(inv.status);
         }
       }
@@ -211,14 +220,14 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
         status: saveStatus,
         transportMode,
         vehicleNumber: "",
-        deliveryNote: "",
-        suppliersRef: "",
+        deliveryNote,
+        suppliersRef,
         otherRef: "",
         buyersOrderNo,
         despatchThrough,
         destination,
-        billOfLadingNo: "",
-        motorVehicleNo: "",
+        billOfLadingNo,
+        motorVehicleNo,
         createdAt: existingInvoice?.createdAt || new Date(),
         updatedAt: new Date(),
         versions: existingInvoice?.versions || [],
@@ -275,14 +284,14 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
         status: "finalized",
         transportMode,
         vehicleNumber: "",
-        deliveryNote: "",
-        suppliersRef: "",
+        deliveryNote,
+        suppliersRef,
         otherRef: "",
         buyersOrderNo,
         despatchThrough,
         destination,
-        billOfLadingNo: "",
-        motorVehicleNo: "",
+        billOfLadingNo,
+        motorVehicleNo,
         createdAt: existingInvoice?.createdAt || new Date(),
         updatedAt: new Date(),
         versions: existingInvoice?.versions || [],
@@ -502,11 +511,13 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs text-slate-600">Description / Size</Label>
-                        <Input
+                        <Label className="text-xs text-slate-600">Description / Size <span className="text-slate-400">(Enter for new line)</span></Label>
+                        <Textarea
                           value={item.description}
                           onChange={(e) => updateItem(idx, { description: e.target.value })}
-                          placeholder="SIZE: 36x50"
+                          placeholder={"SIZE: 36x50\n2x500"}
+                          rows={2}
+                          className="resize-none text-sm"
                           data-testid={`input-item-desc-${idx}`}
                         />
                       </div>
@@ -594,12 +605,28 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
                 <Input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="PATANCHERU" data-testid="input-destination" />
               </div>
               <div>
+                <Label className="text-xs">Motor Vehicle No.</Label>
+                <Input value={motorVehicleNo} onChange={(e) => setMotorVehicleNo(e.target.value)} placeholder="TS09AB1234" data-testid="input-motor-vehicle-no" />
+              </div>
+              <div>
+                <Label className="text-xs">Bill of Lading / LR-RR No.</Label>
+                <Input value={billOfLadingNo} onChange={(e) => setBillOfLadingNo(e.target.value)} placeholder="LR-001" data-testid="input-bill-of-lading" />
+              </div>
+              <div>
+                <Label className="text-xs">Delivery Note</Label>
+                <Input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder="DN-001" data-testid="input-delivery-note" />
+              </div>
+              <div>
+                <Label className="text-xs">Supplier's Ref.</Label>
+                <Input value={suppliersRef} onChange={(e) => setSuppliersRef(e.target.value)} placeholder="Other References" data-testid="input-suppliers-ref" />
+              </div>
+              <div>
                 <Label className="text-xs">Buyer's Order No.</Label>
                 <Input value={buyersOrderNo} onChange={(e) => setBuyersOrderNo(e.target.value)} data-testid="input-buyers-order-no" />
               </div>
               <div>
                 <Label className="text-xs">Other Charges Label</Label>
-                <Input value={otherChargesLabel} onChange={(e) => setOtherChargesLabel(e.target.value)} placeholder="Auto Fright" data-testid="input-other-charges-label" />
+                <Input value={otherChargesLabel} onChange={(e) => setOtherChargesLabel(e.target.value)} placeholder="FRIGHT" data-testid="input-other-charges-label" />
               </div>
             </CardContent>
           </Card>

@@ -160,7 +160,9 @@ export default function InvoiceView() {
                     <td className="py-3 px-2 text-slate-500">{idx + 1}</td>
                     <td className="py-3 px-2">
                       <p className="font-semibold text-slate-900">{item.productName}</p>
-                      {item.description && <p className="text-slate-500">{item.description}</p>}
+                      {item.description && (
+                        <p className="text-slate-500 whitespace-pre-line text-xs">{item.description}</p>
+                      )}
                     </td>
                     <td className="py-3 px-2 text-center font-mono text-slate-600">{item.hsnCode}</td>
                     <td className="py-3 px-2 text-center text-slate-600">{item.gstPercent}%</td>
