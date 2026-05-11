@@ -92,9 +92,7 @@ export default function InvoiceView() {
             <div className="text-center mb-4">
               <h2 className="text-lg font-bold text-slate-900 uppercase tracking-wide border border-slate-300 inline-block px-6 py-1">TAX INVOICE</h2>
             </div>
-            <div className="flex items-start justify-between">
-              <div className="text-right text-xs text-slate-500 absolute right-8">Original / Duplicate / Triplicate copy</div>
-            </div>
+              <div className="text-right text-xs text-slate-400 italic mb-2">Original / Duplicate / Triplicate copy</div>
             <div className="grid grid-cols-2 gap-6 mt-2">
               <div>
                 <p className="font-bold text-slate-900 text-base">{settings.companyName}</p>
