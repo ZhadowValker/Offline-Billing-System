@@ -280,7 +280,9 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   normalText("described and that all particulars are true and correct.", margin + 2, y + 17, 7.5);
 
   boldText(`For ${settings.companyName}`, margin + halfW + 2, y + 6, 8);
-  normalText("Authorised Signatory", W - margin - 2, y + 24, { align: "right" } as any);
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  doc.text("Authorised Signatory", W - margin - 2, y + 24, { align: "right" });
 
   y += declH;
 
