@@ -56,6 +56,9 @@ jobs:
           BASE_PATH: /Offline-Billing-System/
           PORT: 3000
 
+      - name: List dist contents
+        run: find artifacts/blessy-billing -name "dist" -type d && ls -la artifacts/blessy-billing/dist/ 2>/dev/null || echo "dist not found at expected path"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
