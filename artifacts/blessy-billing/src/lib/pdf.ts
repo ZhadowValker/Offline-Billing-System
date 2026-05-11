@@ -219,29 +219,29 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
     y += rowH;
   }
 
-  totalRow("TOTAL AMOUNT BEFORE TAX", `\u20B9 ${Math.round(invoice.subtotal).toLocaleString("en-IN")}`);
+  totalRow("TOTAL AMOUNT BEFORE TAX", `Rs. ${Math.round(invoice.subtotal).toLocaleString("en-IN")}`);
   if (!invoice.isIGST) {
-    totalRow("CGST", `\u20B9 ${Math.round(invoice.cgstTotal).toLocaleString("en-IN")}`, `${settings.cgstRate}%`);
-    totalRow("SGST", `\u20B9 ${Math.round(invoice.sgstTotal).toLocaleString("en-IN")}`, `${settings.sgstRate}%`);
+    totalRow("CGST", `Rs. ${Math.round(invoice.cgstTotal).toLocaleString("en-IN")}`, `${settings.cgstRate}%`);
+    totalRow("SGST", `Rs. ${Math.round(invoice.sgstTotal).toLocaleString("en-IN")}`, `${settings.sgstRate}%`);
     totalRow("IGST", "");
   } else {
     totalRow("CGST", "");
     totalRow("SGST", "");
-    totalRow("IGST", `\u20B9 ${Math.round(invoice.igstTotal).toLocaleString("en-IN")}`, `${settings.igstRate}%`);
+    totalRow("IGST", `Rs. ${Math.round(invoice.igstTotal).toLocaleString("en-IN")}`, `${settings.igstRate}%`);
   }
-  totalRow("TAX AMOUNT : GST", `\u20B9 ${Math.round(invoice.taxTotal).toLocaleString("en-IN")}`, `${invoice.isIGST ? settings.igstRate : settings.cgstRate + settings.sgstRate}%`);
+  totalRow("TAX AMOUNT : GST", `Rs. ${Math.round(invoice.taxTotal).toLocaleString("en-IN")}`, `${invoice.isIGST ? settings.igstRate : settings.cgstRate + settings.sgstRate}%`);
 
   doc.setFillColor(240, 240, 240);
   doc.rect(margin, y, pageW, rowH, "F");
-  totalRow("TOTAL AMOUNT AFTER TAX", `\u20B9 ${Math.round(invoice.subtotal + invoice.taxTotal).toLocaleString("en-IN")}`, undefined, true);
+  totalRow("TOTAL AMOUNT AFTER TAX", `Rs. ${Math.round(invoice.subtotal + invoice.taxTotal).toLocaleString("en-IN")}`, undefined, true);
 
   if (invoice.otherCharges > 0) {
-    totalRow(`OTHER CHARGES   ${invoice.otherChargesLabel}`, `\u20B9 ${Math.round(invoice.otherCharges).toLocaleString("en-IN")}`);
+    totalRow(`OTHER CHARGES   ${invoice.otherChargesLabel}`, `Rs. ${Math.round(invoice.otherCharges).toLocaleString("en-IN")}`);
   }
 
   doc.setFillColor(220, 240, 228);
   doc.rect(margin, y, pageW, rowH, "F");
-  totalRow("TOTAL PAYABLE AMOUNT", `\u20B9 ${Math.round(invoice.totalAmount).toLocaleString("en-IN")}`, undefined, true);
+  totalRow("TOTAL PAYABLE AMOUNT", `Rs. ${Math.round(invoice.totalAmount).toLocaleString("en-IN")}`, undefined, true);
 
   y += 2;
 
@@ -249,7 +249,7 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   line(y);
   const words = numberToWords(invoice.totalAmount);
   boldText("TOTAL AMOUNT IN WORDS :", margin + 2, y + 5, 8);
-  normalText(words, margin + 62, y + 5, 8);
+  boldText(words.toUpperCase(), margin + 62, y + 5, 8);
   line(y + 8);
   y += 8;
 
