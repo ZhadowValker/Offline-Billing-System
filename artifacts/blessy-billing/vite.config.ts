@@ -28,7 +28,6 @@ if (!basePath) {
 
 export default defineConfig({
   base: process.env.BASE_URL ?? '/',
-  base: basePath,
   plugins: [
     react(),
     tailwindcss(),
