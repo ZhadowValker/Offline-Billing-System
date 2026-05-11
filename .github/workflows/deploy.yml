@@ -54,6 +54,7 @@ jobs:
         run: pnpm --filter @workspace/blessy-billing run build
         env:
           BASE_PATH: /Offline-Billing-System/
+          BASE_URL: /Offline-Billing-System/
           PORT: 3000
 
       - name: List dist contents
