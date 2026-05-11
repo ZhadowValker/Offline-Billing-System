@@ -53,8 +53,7 @@ jobs:
       - name: Build Blessy Billing app
         run: pnpm --filter @workspace/blessy-billing run build
         env:
-          # Vite needs the base path set to the repo name for GH Pages sub-path
-          BASE_URL: /Offline-Billing-System/
+          BASE_PATH: /Offline-Billing-System/
           PORT: 3000
 
       - name: Upload Pages artifact
