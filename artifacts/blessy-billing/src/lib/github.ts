@@ -1,7 +1,6 @@
 /**
  * GitHub JSON Sync Layer
- * Uses Git Data API (refs/trees/blobs) instead of Contents API
- * to avoid SHA caching issues entirely.
+ * Uses Git Data API — one commit per sync covering all changed files.
  */
 
 const API = "https://api.github.com";
@@ -47,83 +46,82 @@ async function api(pat: string, path: string, options?: RequestInit) {
 }
 
 /**
- * Write a JSON file using the Git Data API (low-level trees + commits).
- * This completely avoids the Contents API SHA caching problem.
- *
- * Flow:
- * 1. Get the current commit SHA of main branch
- * 2. Get the tree SHA from that commit
- * 3. Create a new blob with our content
- * 4. Create a new tree with the blob replacing the target file
- * 5. Create a new commit pointing to the new tree
- * 6. Update the main branch ref to the new commit
+ * Write multiple files in a single commit using Git Data API.
+ * No SHA conflicts — works purely with commit/tree SHAs.
  */
-async function writeFileViaGitApi(
+async function writeFilesInOneCommit(
   config: GitHubConfig,
-  path: string,
-  content: any,
-  message?: string
+  files: { path: string; content: any }[],
+  message: string
 ): Promise<void> {
   const { pat, repo } = config;
-  const json = JSON.stringify(content, null, 2);
 
   // 1. Get latest commit SHA on main
   const refData = await api(pat, `/repos/${repo}/git/ref/heads/${BRANCH}`);
   const latestCommitSha: string = refData.object.sha;
 
-  // 2. Get the tree SHA from that commit
+  // 2. Get the base tree SHA
   const commitData = await api(pat, `/repos/${repo}/git/commits/${latestCommitSha}`);
   const baseTreeSha: string = commitData.tree.sha;
 
-  // 3. Create a new blob with the file content
-  const blobData = await api(pat, `/repos/${repo}/git/blobs`, {
-    method: "POST",
-    body: JSON.stringify({ content: toBase64(json), encoding: "base64" }),
-  });
-  const blobSha: string = blobData.sha;
+  // 3. Create blobs for all files in parallel
+  const blobs = await Promise.all(
+    files.map(async (f) => {
+      const blob = await api(pat, `/repos/${repo}/git/blobs`, {
+        method: "POST",
+        body: JSON.stringify({
+          content: toBase64(JSON.stringify(f.content, null, 2)),
+          encoding: "base64",
+        }),
+      });
+      return { path: f.path, sha: blob.sha as string };
+    })
+  );
 
-  // 4. Create a new tree with our file updated
+  // 4. Create one new tree with all files updated
   const treeData = await api(pat, `/repos/${repo}/git/trees`, {
     method: "POST",
     body: JSON.stringify({
       base_tree: baseTreeSha,
-      tree: [{ path, mode: "100644", type: "blob", sha: blobSha }],
+      tree: blobs.map((b) => ({
+        path: b.path,
+        mode: "100644",
+        type: "blob",
+        sha: b.sha,
+      })),
     }),
   });
-  const newTreeSha: string = treeData.sha;
 
-  // 5. Create a new commit
+  // 5. Create a single new commit
   const newCommit = await api(pat, `/repos/${repo}/git/commits`, {
     method: "POST",
     body: JSON.stringify({
-      message: message || `sync: update ${path}`,
-      tree: newTreeSha,
+      message,
+      tree: treeData.sha,
       parents: [latestCommitSha],
     }),
   });
-  const newCommitSha: string = newCommit.sha;
 
-  // 6. Update the branch ref (force: false — if another commit raced us, this fails cleanly)
+  // 6. Advance the branch ref
   try {
     await api(pat, `/repos/${repo}/git/refs/heads/${BRANCH}`, {
       method: "PATCH",
-      body: JSON.stringify({ sha: newCommitSha, force: false }),
+      body: JSON.stringify({ sha: newCommit.sha, force: false }),
     });
   } catch (e: any) {
-    // If ref update fails, it means another write happened concurrently — retry once
-    if (e.message?.includes("Update is not a fast forward")) {
-      // Retry the entire write with the new base
-      return writeFileViaGitApi(config, path, content, message);
+    // Another write raced us — retry once with fresh base
+    if (e.message?.includes("not a fast forward")) {
+      return writeFilesInOneCommit(config, files, message);
     }
     throw e;
   }
 }
 
-/** Read a JSON file using the Contents API (reads are fine, only writes have caching issues) */
+/** Read a JSON file from GitHub */
 async function readFile(
   config: GitHubConfig,
   path: string
-): Promise<{ content: any } | null> {
+): Promise<any | null> {
   const res = await fetch(
     `${API}/repos/${config.repo}/contents/${path}?ref=${BRANCH}`,
     { headers: h(config.pat) }
@@ -131,129 +129,119 @@ async function readFile(
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitHub read failed: ${res.status}`);
   const data = await res.json();
-  const content = JSON.parse(fromBase64(data.content));
-  return { content };
+  return JSON.parse(fromBase64(data.content));
 }
 
-// ── INVOICES ──────────────────────────────────────────────────────────────────
+// ── PUSH ALL (one commit) ─────────────────────────────────────────────────────
+
+export async function pushAllToGitHub(): Promise<{ success: boolean; error?: string; summary?: string }> {
+  try {
+    const config = await getConfig();
+    if (!config) return { success: false, error: "GitHub not configured" };
+
+    const { db } = await import("./db");
+    const [invoices, customers, products] = await Promise.all([
+      db.invoices.toArray(),
+      db.customers.toArray(),
+      db.products.toArray(),
+    ]);
+
+    const files = [
+      { path: "data/invoices.json", content: invoices },
+      { path: "data/customers.json", content: customers },
+      { path: "data/products.json", content: products },
+    ];
+
+    const summary = `${invoices.length} invoices, ${customers.length} customers, ${products.length} products`;
+    await writeFilesInOneCommit(config, files, `sync: ${summary}`);
+
+    return { success: true, summary };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ── INVOICE-ONLY SYNC (called on each invoice save) ───────────────────────────
 
 export async function syncInvoicesToGitHub(): Promise<{ success: boolean; error?: string }> {
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
+
     const { db } = await import("./db");
     const invoices = await db.invoices.toArray();
-    await writeFileViaGitApi(config, "data/invoices.json", invoices, `sync: ${invoices.length} invoices`);
+
+    await writeFilesInOneCommit(
+      config,
+      [{ path: "data/invoices.json", content: invoices }],
+      `sync: ${invoices.length} invoice${invoices.length !== 1 ? "s" : ""}`
+    );
+
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
 }
 
-export async function syncInvoicesFromGitHub(): Promise<{ success: boolean; count?: number; error?: string }> {
+// ── PULL ALL ──────────────────────────────────────────────────────────────────
+
+export async function pullAllFromGitHub(): Promise<{
+  success: boolean;
+  error?: string;
+  invoices?: number;
+  customers?: number;
+  products?: number;
+}> {
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-    const file = await readFile(config, "data/invoices.json");
-    if (!file) return { success: true, count: 0 };
+
     const { db } = await import("./db");
-    await db.invoices.clear();
-    for (const inv of file.content) {
-      await db.invoices.add({
-        ...inv,
-        invoiceDate: new Date(inv.invoiceDate),
-        createdAt: new Date(inv.createdAt),
-        updatedAt: new Date(inv.updatedAt),
-      });
+
+    const [remoteInvoices, remoteCustomers, remoteProducts] = await Promise.all([
+      readFile(config, "data/invoices.json"),
+      readFile(config, "data/customers.json"),
+      readFile(config, "data/products.json"),
+    ]);
+
+    if (remoteInvoices) {
+      await db.invoices.clear();
+      for (const inv of remoteInvoices) {
+        await db.invoices.add({
+          ...inv,
+          invoiceDate: new Date(inv.invoiceDate),
+          createdAt: new Date(inv.createdAt),
+          updatedAt: new Date(inv.updatedAt),
+        });
+      }
     }
-    return { success: true, count: file.content.length };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-}
 
-// ── CUSTOMERS ─────────────────────────────────────────────────────────────────
-
-export async function syncCustomersToGitHub(): Promise<{ success: boolean; error?: string }> {
-  try {
-    const config = await getConfig();
-    if (!config) return { success: false, error: "GitHub not configured" };
-    const { db } = await import("./db");
-    const customers = await db.customers.toArray();
-    await writeFileViaGitApi(config, "data/customers.json", customers, `sync: ${customers.length} customers`);
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-}
-
-export async function syncCustomersFromGitHub(): Promise<{ success: boolean; count?: number; error?: string }> {
-  try {
-    const config = await getConfig();
-    if (!config) return { success: false, error: "GitHub not configured" };
-    const file = await readFile(config, "data/customers.json");
-    if (!file) return { success: true, count: 0 };
-    const { db } = await import("./db");
-    await db.customers.clear();
-    for (const c of file.content) {
-      await db.customers.add({ ...c, createdAt: new Date(c.createdAt) });
+    if (remoteCustomers) {
+      await db.customers.clear();
+      for (const c of remoteCustomers) {
+        await db.customers.add({ ...c, createdAt: new Date(c.createdAt) });
+      }
     }
-    return { success: true, count: file.content.length };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-}
 
-// ── PRODUCTS ──────────────────────────────────────────────────────────────────
-
-export async function syncProductsToGitHub(): Promise<{ success: boolean; error?: string }> {
-  try {
-    const config = await getConfig();
-    if (!config) return { success: false, error: "GitHub not configured" };
-    const { db } = await import("./db");
-    const products = await db.products.toArray();
-    await writeFileViaGitApi(config, "data/products.json", products, `sync: ${products.length} products`);
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-}
-
-export async function syncProductsFromGitHub(): Promise<{ success: boolean; count?: number; error?: string }> {
-  try {
-    const config = await getConfig();
-    if (!config) return { success: false, error: "GitHub not configured" };
-    const file = await readFile(config, "data/products.json");
-    if (!file) return { success: true, count: 0 };
-    const { db } = await import("./db");
-    await db.products.clear();
-    for (const p of file.content) {
-      await db.products.add({ ...p, createdAt: new Date(p.createdAt) });
+    if (remoteProducts) {
+      await db.products.clear();
+      for (const p of remoteProducts) {
+        await db.products.add({ ...p, createdAt: new Date(p.createdAt) });
+      }
     }
-    return { success: true, count: file.content.length };
+
+    return {
+      success: true,
+      invoices: remoteInvoices?.length ?? 0,
+      customers: remoteCustomers?.length ?? 0,
+      products: remoteProducts?.length ?? 0,
+    };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
 }
 
-// ── FULL SYNC ─────────────────────────────────────────────────────────────────
-
-export async function pullAllFromGitHub() {
-  const [invoices, customers, products] = await Promise.all([
-    syncInvoicesFromGitHub(),
-    syncCustomersFromGitHub(),
-    syncProductsFromGitHub(),
-  ]);
-  return { invoices, customers, products };
-}
-
-/** Push sequentially — each write creates a new commit on top of the previous */
-export async function pushAllToGitHub() {
-  const invoices = await syncInvoicesToGitHub();
-  const customers = await syncCustomersToGitHub();
-  const products = await syncProductsToGitHub();
-  return { invoices, customers, products };
-}
+// ── VERIFY ────────────────────────────────────────────────────────────────────
 
 export async function verifyGitHubConfig(
   pat: string,
@@ -269,3 +257,10 @@ export async function verifyGitHubConfig(
     return { success: false, error: "Network error. Check internet connection." };
   }
 }
+
+// Keep these exports for backward compatibility
+export async function syncCustomersToGitHub() { return pushAllToGitHub(); }
+export async function syncProductsToGitHub() { return pushAllToGitHub(); }
+export async function syncInvoicesFromGitHub() { return pullAllFromGitHub(); }
+export async function syncCustomersFromGitHub() { return pullAllFromGitHub(); }
+export async function syncProductsFromGitHub() { return pullAllFromGitHub(); }

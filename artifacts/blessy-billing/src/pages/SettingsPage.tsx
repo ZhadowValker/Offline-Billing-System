@@ -75,12 +75,10 @@ export default function SettingsPage() {
   async function handlePush() {
     setSyncing("push");
     const result = await pushAllToGitHub();
-    const allOk = result.invoices.success && result.customers.success && result.products.success;
-    if (allOk) {
-      toast({ title: "Data pushed to GitHub successfully!" });
+    if (result.success) {
+      toast({ title: `✓ Pushed to GitHub: ${result.summary}` });
     } else {
-      const errors = [result.invoices.error, result.customers.error, result.products.error].filter(Boolean);
-      toast({ title: errors[0] || "Sync failed", variant: "destructive" });
+      toast({ title: result.error || "Sync failed", variant: "destructive" });
     }
     setSyncing(null);
   }
@@ -90,12 +88,10 @@ export default function SettingsPage() {
     if (!confirmed) return;
     setSyncing("pull");
     const result = await pullAllFromGitHub();
-    const allOk = result.invoices.success && result.customers.success && result.products.success;
-    if (allOk) {
-      toast({ title: `Pulled from GitHub: ${result.invoices.count} invoices, ${result.customers.count} customers, ${result.products.count} products` });
+    if (result.success) {
+      toast({ title: `✓ Pulled: ${result.invoices} invoices, ${result.customers} customers, ${result.products} products` });
     } else {
-      const errors = [result.invoices.error, result.customers.error, result.products.error].filter(Boolean);
-      toast({ title: errors[0] || "Pull failed", variant: "destructive" });
+      toast({ title: result.error || "Pull failed", variant: "destructive" });
     }
     setSyncing(null);
   }
