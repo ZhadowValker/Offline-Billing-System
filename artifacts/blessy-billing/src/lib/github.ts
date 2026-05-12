@@ -27,41 +27,79 @@ function headers(pat: string) {
   };
 }
 
+function toBase64(str: string): string {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+function fromBase64(str: string): string {
+  return decodeURIComponent(escape(atob(str.replace(/\n/g, ""))));
+}
+
 /** Read a JSON file from GitHub. Returns { content, sha } */
-async function readFile(config: GitHubConfig, path: string): Promise<{ content: any; sha: string } | null> {
-  const res = await fetch(`${GITHUB_API}/repos/${config.repo}/contents/${path}`, {
-    headers: headers(config.pat),
-  });
+async function readFile(
+  config: GitHubConfig,
+  path: string
+): Promise<{ content: any; sha: string } | null> {
+  const res = await fetch(
+    `${GITHUB_API}/repos/${config.repo}/contents/${path}`,
+    { headers: headers(config.pat) }
+  );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitHub read failed: ${res.status}`);
   const data = await res.json();
-  const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
-  const content = JSON.parse(decoded);
+  const content = JSON.parse(fromBase64(data.content));
   return { content, sha: data.sha };
 }
 
-/** Write/update a JSON file on GitHub — always fetches latest SHA to avoid conflicts */
-async function writeFile(config: GitHubConfig, path: string, content: any, _sha?: string, message?: string) {
-  // Always fetch the latest SHA fresh — never rely on a cached value
-  const latest = await readFile(config, path);
-  const sha = latest?.sha; // undefined if file doesn't exist yet (first write)
+/**
+ * Write a JSON file to GitHub.
+ * Retries up to 3 times on SHA conflict (409 or "but expected" error)
+ * by re-fetching the latest SHA before each attempt.
+ */
+async function writeFile(
+  config: GitHubConfig,
+  path: string,
+  content: any,
+  message?: string
+): Promise<any> {
+  const MAX_RETRIES = 3;
 
-  const body: any = {
-    message: message || `sync: update ${path}`,
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
-  };
-  if (sha) body.sha = sha;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    // Always fetch the freshest SHA right before writing
+    const latest = await readFile(config, path);
+    const sha = latest?.sha; // undefined = file doesn't exist yet
 
-  const res = await fetch(`${GITHUB_API}/repos/${config.repo}/contents/${path}`, {
-    method: "PUT",
-    headers: headers(config.pat),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(`GitHub write failed: ${err.message}`);
+    const body: Record<string, string> = {
+      message: message || `sync: update ${path}`,
+      content: toBase64(JSON.stringify(content, null, 2)),
+    };
+    if (sha) body.sha = sha;
+
+    const res = await fetch(
+      `${GITHUB_API}/repos/${config.repo}/contents/${path}`,
+      {
+        method: "PUT",
+        headers: headers(config.pat),
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (res.ok) return res.json();
+
+    const errData = await res.json();
+    const isConflict =
+      res.status === 409 ||
+      res.status === 422 ||
+      (errData.message && errData.message.includes("but expected"));
+
+    if (isConflict && attempt < MAX_RETRIES) {
+      // Back off briefly before retry
+      await new Promise((r) => setTimeout(r, 600 * attempt));
+      continue;
+    }
+
+    throw new Error(`GitHub write failed: ${errData.message}`);
   }
-  return res.json();
 }
 
 // ── INVOICES ──────────────────────────────────────────────────────────────────
@@ -70,18 +108,9 @@ export async function syncInvoicesToGitHub(): Promise<{ success: boolean; error?
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-
     const { db } = await import("./db");
     const invoices = await db.invoices.toArray();
-
-    const existing = await readFile(config, "data/invoices.json");
-    await writeFile(
-      config,
-      "data/invoices.json",
-      invoices,
-      existing?.sha,
-      `sync: ${invoices.length} invoices`
-    );
+    await writeFile(config, "data/invoices.json", invoices, `sync: ${invoices.length} invoices`);
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e.message };
@@ -92,16 +121,11 @@ export async function syncInvoicesFromGitHub(): Promise<{ success: boolean; coun
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-
     const file = await readFile(config, "data/invoices.json");
     if (!file) return { success: true, count: 0 };
-
     const { db } = await import("./db");
-    const remoteInvoices = file.content as any[];
-
-    // Merge: remote is source of truth, local fills gaps
     await db.invoices.clear();
-    for (const inv of remoteInvoices) {
+    for (const inv of file.content) {
       await db.invoices.add({
         ...inv,
         invoiceDate: new Date(inv.invoiceDate),
@@ -109,7 +133,7 @@ export async function syncInvoicesFromGitHub(): Promise<{ success: boolean; coun
         updatedAt: new Date(inv.updatedAt),
       });
     }
-    return { success: true, count: remoteInvoices.length };
+    return { success: true, count: file.content.length };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
@@ -121,12 +145,9 @@ export async function syncCustomersToGitHub(): Promise<{ success: boolean; error
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-
     const { db } = await import("./db");
     const customers = await db.customers.toArray();
-
-    const existing = await readFile(config, "data/customers.json");
-    await writeFile(config, "data/customers.json", customers, existing?.sha, `sync: ${customers.length} customers`);
+    await writeFile(config, "data/customers.json", customers, `sync: ${customers.length} customers`);
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e.message };
@@ -137,10 +158,8 @@ export async function syncCustomersFromGitHub(): Promise<{ success: boolean; cou
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-
     const file = await readFile(config, "data/customers.json");
     if (!file) return { success: true, count: 0 };
-
     const { db } = await import("./db");
     await db.customers.clear();
     for (const c of file.content) {
@@ -158,12 +177,9 @@ export async function syncProductsToGitHub(): Promise<{ success: boolean; error?
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-
     const { db } = await import("./db");
     const products = await db.products.toArray();
-
-    const existing = await readFile(config, "data/products.json");
-    await writeFile(config, "data/products.json", products, existing?.sha, `sync: ${products.length} products`);
+    await writeFile(config, "data/products.json", products, `sync: ${products.length} products`);
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e.message };
@@ -174,10 +190,8 @@ export async function syncProductsFromGitHub(): Promise<{ success: boolean; coun
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
-
     const file = await readFile(config, "data/products.json");
     if (!file) return { success: true, count: 0 };
-
     const { db } = await import("./db");
     await db.products.clear();
     for (const p of file.content) {
@@ -201,15 +215,17 @@ export async function pullAllFromGitHub() {
 }
 
 export async function pushAllToGitHub() {
-  const [invoices, customers, products] = await Promise.all([
-    syncInvoicesToGitHub(),
-    syncCustomersToGitHub(),
-    syncProductsToGitHub(),
-  ]);
+  // Push sequentially to avoid parallel SHA conflicts on the same repo
+  const invoices = await syncInvoicesToGitHub();
+  const customers = await syncCustomersToGitHub();
+  const products = await syncProductsToGitHub();
   return { invoices, customers, products };
 }
 
-export async function verifyGitHubConfig(pat: string, repo: string): Promise<{ success: boolean; error?: string }> {
+export async function verifyGitHubConfig(
+  pat: string,
+  repo: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`${GITHUB_API}/repos/${repo}`, {
       headers: headers(pat),
