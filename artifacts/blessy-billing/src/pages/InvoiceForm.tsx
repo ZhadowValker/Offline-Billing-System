@@ -41,6 +41,7 @@ import { Plus, Trash2, ChevronDown, Save, ArrowLeft, Check, ChevronsUpDown } fro
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency, formatDateInput } from "@/lib/utils";
 import { generateInvoicePDF } from "@/lib/pdf";
+import { syncInvoicesToGitHub } from "@/lib/github";
 import { cn } from "@/lib/utils";
 
 const emptyItem = (): InvoiceItem => ({
@@ -234,7 +235,6 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
       };
 
       if (mode === "edit" && existingInvoice?.id) {
-        // Save version
         const prevSnapshot = { ...existingInvoice };
         const versions = [...(existingInvoice.versions || [])];
         versions.push({
@@ -251,6 +251,13 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
         await incrementInvoiceNumber();
         toast({ title: "Invoice created" });
       }
+
+      // Auto-sync to GitHub (non-blocking — don't wait, don't fail the save)
+      syncInvoicesToGitHub().then((result) => {
+        if (result.success) {
+          toast({ title: "✓ Synced to GitHub" });
+        }
+      });
 
       setLocation("/invoices");
     } finally {
@@ -308,6 +315,14 @@ export default function InvoiceForm({ mode }: { mode: "create" | "edit" }) {
       }
 
       await generateInvoicePDF(savedInv);
+
+      // Auto-sync to GitHub
+      syncInvoicesToGitHub().then((result) => {
+        if (result.success) {
+          toast({ title: "✓ Synced to GitHub" });
+        }
+      });
+
       setLocation("/invoices");
     } finally {
       setSaving(false);

@@ -5,14 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Save, Building2, CreditCard, FileText, RefreshCw } from "lucide-react";
+import { Save, Building2, CreditCard, FileText, RefreshCw, Github, Upload, Download, CheckCircle, XCircle, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { verifyGitHubConfig, pushAllToGitHub, pullAllFromGitHub } from "@/lib/github";
 
 export default function SettingsPage() {
   const { toast } = useToast();
   const [form, setForm] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showPat, setShowPat] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verified, setVerified] = useState<boolean | null>(null);
+  const [syncing, setSyncing] = useState<"push" | "pull" | null>(null);
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -43,6 +48,56 @@ export default function SettingsPage() {
       setForm({ ...form, nextInvoiceNumber: 1 });
       toast({ title: "Counter reset to 1" });
     }
+  }
+
+  async function handleVerify() {
+    if (!form?.githubPat || !form?.githubRepo) {
+      toast({ title: "Enter PAT and repo name first", variant: "destructive" });
+      return;
+    }
+    setVerifying(true);
+    setVerified(null);
+    const result = await verifyGitHubConfig(form.githubPat, form.githubRepo);
+    setVerified(result.success);
+    if (result.success) {
+      toast({ title: "GitHub connected successfully!" });
+      // Save after successful verify
+      if (form.id !== undefined) {
+        const { id, ...rest } = form;
+        await db.settings.update(id, rest);
+      }
+    } else {
+      toast({ title: result.error || "Connection failed", variant: "destructive" });
+    }
+    setVerifying(false);
+  }
+
+  async function handlePush() {
+    setSyncing("push");
+    const result = await pushAllToGitHub();
+    const allOk = result.invoices.success && result.customers.success && result.products.success;
+    if (allOk) {
+      toast({ title: "Data pushed to GitHub successfully!" });
+    } else {
+      const errors = [result.invoices.error, result.customers.error, result.products.error].filter(Boolean);
+      toast({ title: errors[0] || "Sync failed", variant: "destructive" });
+    }
+    setSyncing(null);
+  }
+
+  async function handlePull() {
+    const confirmed = window.confirm("Pull data from GitHub? This will overwrite local data with the GitHub version.");
+    if (!confirmed) return;
+    setSyncing("pull");
+    const result = await pullAllFromGitHub();
+    const allOk = result.invoices.success && result.customers.success && result.products.success;
+    if (allOk) {
+      toast({ title: `Pulled from GitHub: ${result.invoices.count} invoices, ${result.customers.count} customers, ${result.products.count} products` });
+    } else {
+      const errors = [result.invoices.error, result.customers.error, result.products.error].filter(Boolean);
+      toast({ title: errors[0] || "Pull failed", variant: "destructive" });
+    }
+    setSyncing(null);
   }
 
   if (loading || !form) {
@@ -197,6 +252,119 @@ export default function SettingsPage() {
             <RefreshCw className="h-3 w-3" />
             Reset Invoice Counter to 1
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* GitHub Sync */}
+      <Card className="border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Github className="h-4 w-4 text-emerald-600" />
+            GitHub Sync
+            <span className="text-xs font-normal text-slate-400 ml-1">— backup & multi-device</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 space-y-1">
+            <p>📦 Data is stored as JSON files in your private GitHub repo</p>
+            <p>🔄 Every invoice save auto-syncs to GitHub</p>
+            <p>📱 Open on any device → pull to get latest data</p>
+          </div>
+
+          <div>
+            <Label className="text-xs">GitHub Repo <span className="text-slate-400">(owner/repo-name)</span></Label>
+            <Input
+              value={form.githubRepo || ""}
+              onChange={(e) => { setForm({ ...form, githubRepo: e.target.value }); setVerified(null); }}
+              placeholder="ZhadowValker/blessy-billing-data"
+              data-testid="input-github-repo"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs">Personal Access Token (PAT)</Label>
+            <div className="relative">
+              <Input
+                type={showPat ? "text" : "password"}
+                value={form.githubPat || ""}
+                onChange={(e) => { setForm({ ...form, githubPat: e.target.value }); setVerified(null); }}
+                placeholder="github_pat_••••••••••••"
+                className="pr-10"
+                data-testid="input-github-pat"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                onClick={() => setShowPat(!showPat)}
+              >
+                {showPat ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Fine-grained PAT with Contents: Read & Write on the data repo</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleVerify}
+              disabled={verifying}
+              className="gap-2"
+              data-testid="button-verify-github"
+            >
+              {verifying ? (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-slate-600" />
+              ) : verified === true ? (
+                <CheckCircle className="h-3 w-3 text-emerald-600" />
+              ) : verified === false ? (
+                <XCircle className="h-3 w-3 text-red-500" />
+              ) : (
+                <Github className="h-3 w-3" />
+              )}
+              {verifying ? "Verifying..." : "Test Connection"}
+            </Button>
+            {verified === true && <span className="text-xs text-emerald-600 font-medium">✓ Connected</span>}
+            {verified === false && <span className="text-xs text-red-500">Connection failed</span>}
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-600">Manual Sync</p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePush}
+                disabled={syncing !== null || !form.githubPat || !form.githubRepo}
+                className="gap-2 flex-1"
+                data-testid="button-push-github"
+              >
+                {syncing === "push" ? (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-slate-600" />
+                ) : (
+                  <Upload className="h-3 w-3" />
+                )}
+                {syncing === "push" ? "Pushing..." : "Push to GitHub"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePull}
+                disabled={syncing !== null || !form.githubPat || !form.githubRepo}
+                className="gap-2 flex-1"
+                data-testid="button-pull-github"
+              >
+                {syncing === "pull" ? (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-slate-600" />
+                ) : (
+                  <Download className="h-3 w-3" />
+                )}
+                {syncing === "pull" ? "Pulling..." : "Pull from GitHub"}
+              </Button>
+            </div>
+            <p className="text-xs text-slate-400">Push = local → GitHub &nbsp;|&nbsp; Pull = GitHub → local (overwrites local)</p>
+          </div>
         </CardContent>
       </Card>
     </div>
