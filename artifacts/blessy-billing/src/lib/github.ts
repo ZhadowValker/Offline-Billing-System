@@ -35,15 +35,20 @@ async function readFile(config: GitHubConfig, path: string): Promise<{ content: 
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GitHub read failed: ${res.status}`);
   const data = await res.json();
-  const content = JSON.parse(atob(data.content.replace(/\n/g, "")));
+  const decoded = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+  const content = JSON.parse(decoded);
   return { content, sha: data.sha };
 }
 
-/** Write/update a JSON file on GitHub */
-async function writeFile(config: GitHubConfig, path: string, content: any, sha?: string, message?: string) {
+/** Write/update a JSON file on GitHub — always fetches latest SHA to avoid conflicts */
+async function writeFile(config: GitHubConfig, path: string, content: any, _sha?: string, message?: string) {
+  // Always fetch the latest SHA fresh — never rely on a cached value
+  const latest = await readFile(config, path);
+  const sha = latest?.sha; // undefined if file doesn't exist yet (first write)
+
   const body: any = {
     message: message || `sync: update ${path}`,
-    content: btoa(JSON.stringify(content, null, 2)),
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
   };
   if (sha) body.sha = sha;
 
