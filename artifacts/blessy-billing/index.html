@@ -8,6 +8,28 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Restore path from GitHub Pages 404 redirect
+      (function() {
+        var redirect = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        if (redirect && redirect !== location.href) {
+          history.replaceState(null, null, redirect);
+        }
+        // Also handle the ?p= query param from 404.html
+        var search = window.location.search;
+        if (search.startsWith('?p=/')) {
+          var path = search.slice(3).replace(/~and~/g, '&');
+          var qIdx = path.indexOf('&q=');
+          var query = '';
+          if (qIdx !== -1) {
+            query = '?' + path.slice(qIdx + 3);
+            path = path.slice(0, qIdx);
+          }
+          history.replaceState(null, null, window.location.pathname.split('?')[0] + path + query + window.location.hash);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -166,9 +166,13 @@ export async function getSettings(): Promise<Settings> {
 
 export async function getNextInvoiceNumber(): Promise<string> {
   const settings = await getSettings();
-  const year = new Date().getFullYear();
+  // Financial year: April start. e.g. FY 2026-27 → "26-27"
+  const today = new Date();
+  const calYear = today.getFullYear();
+  const fyStart = today.getMonth() >= 3 ? calYear : calYear - 1; // April = month 3
+  const fyShort = `${String(fyStart).slice(2)}-${String(fyStart + 1).slice(2)}`;
   const num = String(settings.nextInvoiceNumber).padStart(4, "0");
-  return `${settings.invoicePrefix}-${year}-${num}`;
+  return `${settings.invoicePrefix}-${fyShort}-${num}`;
 }
 
 export async function incrementInvoiceNumber(): Promise<void> {

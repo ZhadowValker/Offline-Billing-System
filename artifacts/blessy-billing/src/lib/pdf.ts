@@ -309,12 +309,8 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   normalText(settings.bankName, bankValueX, footerY + 13, 7.5);
   normalText("A/C No. :", bankLabelX, footerY + 19, 7.5);
   normalText(settings.accountNumber, bankValueX, footerY + 19, 7.5);
-  normalText("IFSC Code :", bankLabelX, footerY + 25, 7.5);
+  normalText("Branch & IFSC Code :", bankLabelX, footerY + 25, 7.5);
   normalText(settings.ifscCode, bankValueX, footerY + 25, 7.5);
-  if (settings.branchName) {
-    normalText("Branch :", bankLabelX, footerY + 31, 7.5);
-    normalText(settings.branchName, bankValueX, footerY + 31, 7.5);
-  }
 
   y += footerH;
 
