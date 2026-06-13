@@ -104,6 +104,8 @@ export interface Settings {
   nextInvoiceNumber: number;
   githubPat?: string;
   githubRepo?: string;
+  lastSyncSha?: string;
+  loginPasswordHash?: string;
 }
 
 class BlessyDB extends Dexie {
@@ -129,6 +131,15 @@ class BlessyDB extends Dexie {
       settings: "++id",
     }).upgrade(() => {
       // githubPat and githubRepo added as optional fields — no migration needed
+    });
+
+    this.version(3).stores({
+      customers: "++id, name, gstNumber, createdAt",
+      products: "++id, name, category, hsnCode, createdAt",
+      invoices: "++id, invoiceNumber, invoiceDate, status, createdAt",
+      settings: "++id",
+    }).upgrade(() => {
+      // lastSyncSha and loginPasswordHash added as optional fields — no migration needed
     });
   }
 }

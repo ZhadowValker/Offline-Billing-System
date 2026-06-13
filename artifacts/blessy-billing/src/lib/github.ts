@@ -132,6 +132,17 @@ async function readFile(
   return JSON.parse(fromBase64(data.content));
 }
 
+// ── GET LATEST COMMIT SHA ─────────────────────────────────────────────────────
+
+export async function getLatestSha(pat: string, repo: string): Promise<string | null> {
+  try {
+    const refData = await api(pat, `/repos/${repo}/git/ref/heads/${BRANCH}`);
+    return refData.object.sha as string;
+  } catch {
+    return null;
+  }
+}
+
 // ── PUSH ALL (one commit) ─────────────────────────────────────────────────────
 
 export async function pushAllToGitHub(): Promise<{ success: boolean; error?: string; summary?: string }> {
@@ -154,6 +165,15 @@ export async function pushAllToGitHub(): Promise<{ success: boolean; error?: str
 
     const summary = `${invoices.length} invoices, ${customers.length} customers, ${products.length} products`;
     await writeFilesInOneCommit(config, files, `sync: ${summary}`);
+
+    // Store the new SHA so pull-on-open skips if unchanged
+    const newSha = await getLatestSha(config.pat, config.repo);
+    if (newSha) {
+      const settings = await db.settings.toArray();
+      if (settings.length && settings[0].id !== undefined) {
+        await db.settings.update(settings[0].id, { lastSyncSha: newSha });
+      }
+    }
 
     return { success: true, summary };
   } catch (e: any) {

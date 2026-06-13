@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Save, Building2, CreditCard, FileText, RefreshCw, Github, Upload, Download, CheckCircle, XCircle, Eye, EyeOff } from "lucide-react";
+import { Save, Building2, CreditCard, FileText, RefreshCw, Github, Upload, Download, CheckCircle, XCircle, Eye, EyeOff, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { verifyGitHubConfig, pushAllToGitHub, pullAllFromGitHub } from "@/lib/github";
+import { hashPassword, verifyPassword } from "@/lib/auth";
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -18,6 +19,12 @@ export default function SettingsPage() {
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [syncing, setSyncing] = useState<"push" | "pull" | null>(null);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [changingPw, setChangingPw] = useState(false);
 
   useEffect(() => {
     getSettings().then((s) => {
@@ -47,6 +54,40 @@ export default function SettingsPage() {
       await db.settings.update(form.id, { nextInvoiceNumber: 1 });
       setForm({ ...form, nextInvoiceNumber: 1 });
       toast({ title: "Counter reset to 1" });
+    }
+  }
+
+  async function handleChangePassword() {
+    if (!newPw || !confirmPw) {
+      toast({ title: "Fill in all password fields", variant: "destructive" });
+      return;
+    }
+    if (newPw !== confirmPw) {
+      toast({ title: "New passwords don't match", variant: "destructive" });
+      return;
+    }
+    if (newPw.length < 6) {
+      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    if (!form) return;
+    setChangingPw(true);
+    try {
+      const storedHash = form.loginPasswordHash || await hashPassword("blessy123");
+      const currentValid = await verifyPassword(currentPw, storedHash);
+      if (!currentValid) {
+        toast({ title: "Current password is incorrect", variant: "destructive" });
+        return;
+      }
+      const newHash = await hashPassword(newPw);
+      if (form.id !== undefined) {
+        await db.settings.update(form.id, { loginPasswordHash: newHash });
+        setForm({ ...form, loginPasswordHash: newHash });
+      }
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      toast({ title: "✓ Password changed successfully" });
+    } finally {
+      setChangingPw(false);
     }
   }
 
@@ -247,6 +288,70 @@ export default function SettingsPage() {
           >
             <RefreshCw className="h-3 w-3" />
             Reset Invoice Counter to 1
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Password */}
+      <Card className="border-slate-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Lock className="h-4 w-4 text-emerald-600" />
+            Change Password
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label className="text-xs">Current Password</Label>
+            <div className="relative mt-1">
+              <Input
+                type={showCurrentPw ? "text" : "password"}
+                value={currentPw}
+                onChange={(e) => setCurrentPw(e.target.value)}
+                placeholder="Current password"
+                className="pr-10"
+              />
+              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" onClick={() => setShowCurrentPw(!showCurrentPw)}>
+                {showCurrentPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">New Password</Label>
+              <div className="relative mt-1">
+                <Input
+                  type={showNewPw ? "text" : "password"}
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  className="pr-10"
+                />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" onClick={() => setShowNewPw(!showNewPw)}>
+                  {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Confirm New Password</Label>
+              <Input
+                type="password"
+                value={confirmPw}
+                onChange={(e) => setConfirmPw(e.target.value)}
+                placeholder="Repeat new password"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleChangePassword}
+            disabled={changingPw || !currentPw || !newPw || !confirmPw}
+            className="gap-2"
+          >
+            {changingPw ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-slate-600" /> : <Lock className="h-3 w-3" />}
+            {changingPw ? "Changing..." : "Change Password"}
           </Button>
         </CardContent>
       </Card>

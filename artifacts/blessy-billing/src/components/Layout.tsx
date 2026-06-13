@@ -8,8 +8,16 @@ import {
   Settings,
   Menu,
   X,
+  LogOut,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  CheckCircle2,
+  WifiOff,
 } from "lucide-react";
 import { useState } from "react";
+import { logout } from "@/lib/auth";
+import type { SyncStatus } from "@/lib/sync";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -19,7 +27,36 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+function SyncIndicator({ status }: { status: SyncStatus }) {
+  if (status === "idle" || status === "unconfigured") return null;
+
+  const config: Record<SyncStatus, { icon: React.ReactNode; text: string; className: string }> = {
+    idle:         { icon: null, text: "", className: "" },
+    unconfigured: { icon: null, text: "", className: "" },
+    checking:     { icon: <RefreshCw className="h-3 w-3 animate-spin" />, text: "Checking...", className: "text-slate-400" },
+    pulling:      { icon: <RefreshCw className="h-3 w-3 animate-spin" />, text: "Syncing...", className: "text-blue-500" },
+    done:         { icon: <CheckCircle2 className="h-3 w-3" />, text: "Synced", className: "text-emerald-500" },
+    offline:      { icon: <WifiOff className="h-3 w-3" />, text: "Offline", className: "text-amber-500" },
+    error:        { icon: <CloudOff className="h-3 w-3" />, text: "Sync failed", className: "text-red-400" },
+  };
+
+  const { icon, text, className } = config[status];
+  if (!text) return null;
+
+  return (
+    <div className={cn("flex items-center gap-1.5 text-xs font-medium px-3 py-2", className)}>
+      {icon}
+      <span>{text}</span>
+    </div>
+  );
+}
+
+interface LayoutProps {
+  children: React.ReactNode;
+  syncStatus: SyncStatus;
+}
+
+export default function Layout({ children, syncStatus }: LayoutProps) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -27,6 +64,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (href === "/") return location === "/";
     return location.startsWith(href);
   };
+
+  function handleLogout() {
+    logout();
+    window.location.reload();
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -83,30 +125,43 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-slate-100">
-          <p className="text-xs text-slate-400">Offline-first billing</p>
-          <p className="text-xs text-slate-300">Data stored locally</p>
+        {/* Footer — sync status + logout */}
+        <div className="border-t border-slate-100">
+          <SyncIndicator status={syncStatus} />
+          <div className="px-3 pb-3">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile header */}
-        <header className="lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600"
-            data-testid="button-toggle-sidebar"
-          >
-            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 bg-emerald-600 rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-xs">BP</span>
+        <header className="lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1.5 rounded-md hover:bg-slate-100 text-slate-600"
+              data-testid="button-toggle-sidebar"
+            >
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 bg-emerald-600 rounded-md flex items-center justify-center">
+                <span className="text-white font-bold text-xs">BP</span>
+              </div>
+              <span className="font-bold text-slate-900 text-sm">Blessy Packagings</span>
             </div>
-            <span className="font-bold text-slate-900 text-sm">Blessy Packagings</span>
           </div>
+          {/* Mobile sync indicator */}
+          <SyncIndicator status={syncStatus} />
         </header>
 
         {/* Page content */}
