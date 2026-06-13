@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -40,33 +40,43 @@ function AppRoutes({ syncStatus }: { syncStatus: SyncStatus }) {
   );
 }
 
-function AuthenticatedApp() {
-  const qc = useQueryClient();
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+function AuthenticatedApp({ syncStatus }: { syncStatus: SyncStatus }) {
+  return <AppRoutes syncStatus={syncStatus} />;
+}
 
-  useEffect(() => {
+function App() {
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn());
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  // Ref to avoid stale closure in the sync callback
+  const syncStatusRef = useRef<SyncStatus>("idle");
+
+  const runSync = useCallback(() => {
     syncOnOpen((status) => {
+      syncStatusRef.current = status;
       setSyncStatus(status);
-      // When pull completes, invalidate all queries so UI refreshes
+
       if (status === "done") {
-        qc.invalidateQueries();
-        // Reset to idle after 3s
+        // Invalidate React Query cache so every page re-fetches fresh data
+        queryClient.invalidateQueries();
         setTimeout(() => setSyncStatus("idle"), 3000);
       }
       if (status === "offline" || status === "error" || status === "unconfigured") {
         setTimeout(() => setSyncStatus("idle"), 4000);
       }
     });
-  }, [qc]);
+  }, []);
 
-  return <AppRoutes syncStatus={syncStatus} />;
-}
+  // Trigger sync immediately on login — before any page renders
+  const handleLogin = useCallback(() => {
+    setLoggedIn(true);
+    runSync();
+  }, [runSync]);
 
-function App() {
-  const [loggedIn, setLoggedIn] = useState(isLoggedIn());
-
-  const handleLogin = useCallback(() => setLoggedIn(true), []);
-  const handleLogout = useCallback(() => { logout(); setLoggedIn(false); }, []);
+  const handleLogout = useCallback(() => {
+    logout();
+    setLoggedIn(false);
+    setSyncStatus("idle");
+  }, []);
 
   if (!loggedIn) {
     return (
@@ -83,7 +93,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AuthenticatedApp />
+          <AuthenticatedApp syncStatus={syncStatus} />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
