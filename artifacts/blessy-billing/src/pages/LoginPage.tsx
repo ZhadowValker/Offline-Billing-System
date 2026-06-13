@@ -109,7 +109,7 @@ export default function LoginPage({ onLogin }: Props) {
           </form>
 
           <p className="text-xs text-slate-400 text-center mt-4">
-            Default password: <span className="font-mono font-medium text-slate-500">{DEFAULT_PASSWORD}</span>
+            {/* Default password: <span className="font-mono font-medium text-slate-500">{DEFAULT_PASSWORD}</span> */}
           </p>
         </div>
 
