@@ -43,10 +43,12 @@ export default function Dashboard() {
     load();
   }, []);
 
-  const totalRevenue = invoices.reduce((s, i) => s + i.totalAmount, 0);
-  const totalGST = invoices.reduce((s, i) => s + i.taxTotal, 0);
-  const finalizedCount = invoices.filter((i) => i.status === "finalized").length;
-  const draftCount = invoices.filter((i) => i.status === "draft").length;
+  const totalRevenue    = invoices.reduce((s, i) => s + i.totalAmount, 0);
+  const totalGST        = invoices.reduce((s, i) => s + i.taxTotal, 0);
+  const totalCollected  = invoices.reduce((s, i) => s + (i.paidAmount || 0), 0);
+  const totalReceivable = invoices.reduce((s, i) => s + (i.totalAmount - (i.paidAmount || 0)), 0);
+  const finalizedCount  = invoices.filter((i) => i.status === "finalized").length;
+  const draftCount      = invoices.filter((i) => i.status === "draft").length;
 
   const now = new Date();
   const thisMonth = invoices.filter((i) => {
@@ -90,7 +92,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="border-slate-200">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-start justify-between">
@@ -131,6 +133,36 @@ export default function Dashboard() {
               </div>
               <div className="p-2 bg-orange-50 rounded-lg">
                 <FileText className="h-5 w-5 text-orange-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Collected</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">₹{formatCurrency(totalCollected)}</p>
+                <p className="text-xs text-emerald-600 mt-1">payments received</p>
+              </div>
+              <div className="p-2 bg-emerald-50 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">Receivable</p>
+                <p className="text-2xl font-bold text-slate-900 mt-1">₹{formatCurrency(totalReceivable)}</p>
+                <p className="text-xs text-red-500 mt-1">pending collection</p>
+              </div>
+              <div className="p-2 bg-red-50 rounded-lg">
+                <Clock className="h-5 w-5 text-red-500" />
               </div>
             </div>
           </CardContent>

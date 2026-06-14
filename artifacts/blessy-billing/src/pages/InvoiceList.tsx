@@ -13,15 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Plus,
-  Search,
-  FileText,
-  Eye,
-  Edit,
-  Trash2,
-  Download,
-} from "lucide-react";
+import { Plus, Search, FileText, Eye, Edit, Trash2, Download, Receipt, ClipboardList } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +31,8 @@ export default function InvoiceList() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [billTypeFilter, setBillTypeFilter] = useState("all");
+  const [paymentFilter, setPaymentFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -59,8 +53,10 @@ export default function InvoiceList() {
       inv.invoiceNumber.toLowerCase().includes(q) ||
       inv.buyer.name.toLowerCase().includes(q) ||
       String(inv.totalAmount).includes(q);
-    const matchStatus = statusFilter === "all" || inv.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchStatus  = statusFilter  === "all" || inv.status === statusFilter;
+    const matchType    = billTypeFilter === "all" || (inv.billType || "gst") === billTypeFilter;
+    const matchPayment = paymentFilter  === "all" || (inv.paymentStatus || "unpaid") === paymentFilter;
+    return matchSearch && matchStatus && matchType && matchPayment;
   });
 
   async function handleDelete() {
@@ -88,8 +84,8 @@ export default function InvoiceList() {
 
       <Card className="border-slate-200">
         <CardHeader className="pb-3">
-          <div className="flex gap-3">
-            <div className="relative flex-1">
+          <div className="flex gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 placeholder="Search by invoice no, customer..."
@@ -99,6 +95,17 @@ export default function InvoiceList() {
                 data-testid="input-search"
               />
             </div>
+            <Select value={billTypeFilter} onValueChange={setBillTypeFilter}>
+              <SelectTrigger className="w-36" data-testid="select-bill-type-filter">
+                <SelectValue placeholder="Bill Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="gst">GST Bill</SelectItem>
+                <SelectItem value="non-gst">Non-GST</SelectItem>
+                <SelectItem value="quotation">Quotation</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-36" data-testid="select-status-filter">
                 <SelectValue />
@@ -107,6 +114,17 @@ export default function InvoiceList() {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="finalized">Finalized</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+              <SelectTrigger className="w-36" data-testid="select-payment-filter">
+                <SelectValue placeholder="Payment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Payments</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -158,11 +176,21 @@ export default function InvoiceList() {
                       </td>
                       <td className="py-3 px-3 text-right font-bold text-slate-900">₹{formatCurrency(inv.totalAmount)}</td>
                       <td className="py-3 px-3 text-center">
-                        <Badge
-                          className={inv.status === "finalized" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}
-                        >
-                          {inv.status}
-                        </Badge>
+                        <div className="flex flex-col gap-1 items-center">
+                          <Badge
+                            className={inv.status === "finalized" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}
+                          >
+                            {inv.status}
+                          </Badge>
+                          <Badge className={
+                            (inv.paymentStatus || "unpaid") === "paid"    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-xs" :
+                            (inv.paymentStatus || "unpaid") === "partial"  ? "bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs" :
+                            "bg-red-100 text-red-600 hover:bg-red-100 text-xs"
+                          }>
+                            {(inv.paymentStatus || "unpaid") === "paid" ? "Paid" :
+                             (inv.paymentStatus || "unpaid") === "partial" ? "Partial" : "Unpaid"}
+                          </Badge>
+                        </div>
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex items-center justify-end gap-1">
