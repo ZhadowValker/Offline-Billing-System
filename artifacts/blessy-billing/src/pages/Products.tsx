@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Package, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Package, Edit, Trash2, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 
@@ -50,6 +50,41 @@ export default function Products() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [form, setForm] = useState<Omit<Product, "id" | "createdAt">>(emptyProduct);
   const [editId, setEditId] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function importFromInvoices() {
+    setImporting(true);
+    try {
+      const invoices = await db.invoices.toArray();
+      const existing = await db.products.toArray();
+      const existingNames = new Set(existing.map((p) => p.name.trim().toUpperCase()));
+      let added = 0;
+      const seen = new Set<string>();
+      for (const inv of invoices) {
+        for (const item of inv.items || []) {
+          const key = item.productName.trim().toUpperCase();
+          if (!existingNames.has(key) && !seen.has(key)) {
+            seen.add(key);
+            await db.products.add({
+              name: item.productName,
+              category: "Woven Sack",
+              size: item.description || "",
+              hsnCode: item.hsnCode || "",
+              defaultRate: item.rate || 0,
+              gstPercent: item.gstPercent || 18,
+              unit: item.unit || "NOS",
+              createdAt: new Date(),
+            });
+            added++;
+          }
+        }
+      }
+      toast({ title: added > 0 ? `Imported ${added} product${added > 1 ? "s" : ""} from invoices` : "All invoice products already exist" });
+      load();
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function load() {
     const prods = await db.products.orderBy("name").toArray();
@@ -117,10 +152,23 @@ export default function Products() {
           <h1 className="text-2xl font-bold text-slate-900">Products</h1>
           <p className="text-slate-500 text-sm mt-0.5">{products.length} items in catalog</p>
         </div>
-        <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="button-add-product">
-          <Plus className="h-4 w-4" />
-          Add Product
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={importFromInvoices}
+            disabled={importing}
+            className="gap-2 text-xs"
+            data-testid="button-import-products"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {importing ? "Importing..." : "Import from Invoices"}
+          </Button>
+          <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="button-add-product">
+            <Plus className="h-4 w-4" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       <Card className="border-slate-200">

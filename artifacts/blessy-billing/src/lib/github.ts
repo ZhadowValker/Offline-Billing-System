@@ -229,6 +229,10 @@ export async function pullAllFromGitHub(): Promise<{
       for (const inv of remoteInvoices) {
         await db.invoices.add({
           ...inv,
+          billType: inv.billType || "gst",
+          paymentStatus: inv.paymentStatus || "unpaid",
+          paidAmount: inv.paidAmount || 0,
+          payments: inv.payments || [],
           invoiceDate: new Date(inv.invoiceDate),
           createdAt: new Date(inv.createdAt),
           updatedAt: new Date(inv.updatedAt),
@@ -236,17 +240,59 @@ export async function pullAllFromGitHub(): Promise<{
       }
     }
 
-    if (remoteCustomers) {
+    if (remoteCustomers && remoteCustomers.length > 0) {
       await db.customers.clear();
       for (const c of remoteCustomers) {
         await db.customers.add({ ...c, createdAt: new Date(c.createdAt) });
       }
+    } else if (remoteInvoices && remoteInvoices.length > 0) {
+      // Auto-seed customers from invoice buyer data
+      await db.customers.clear();
+      const seen = new Set<string>();
+      for (const inv of remoteInvoices) {
+        const key = inv.buyer.name.trim().toUpperCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          await db.customers.add({
+            name: inv.buyer.name,
+            address: inv.buyer.address || "",
+            gstNumber: inv.buyer.gstNumber || "",
+            state: inv.buyer.state || "",
+            stateCode: inv.buyer.stateCode || "",
+            contact: inv.buyer.contact || "",
+            email: inv.buyer.email || "",
+            createdAt: new Date(inv.createdAt),
+          });
+        }
+      }
     }
 
-    if (remoteProducts) {
+    if (remoteProducts && remoteProducts.length > 0) {
       await db.products.clear();
       for (const p of remoteProducts) {
         await db.products.add({ ...p, createdAt: new Date(p.createdAt) });
+      }
+    } else if (remoteInvoices && remoteInvoices.length > 0) {
+      // Auto-seed products from invoice items
+      await db.products.clear();
+      const seen = new Set<string>();
+      for (const inv of remoteInvoices) {
+        for (const item of inv.items || []) {
+          const key = item.productName.trim().toUpperCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            await db.products.add({
+              name: item.productName,
+              category: "Woven Sack",
+              size: item.description || "",
+              hsnCode: item.hsnCode || "",
+              defaultRate: item.rate || 0,
+              gstPercent: item.gstPercent || 18,
+              unit: item.unit || "NOS",
+              createdAt: new Date(inv.createdAt),
+            });
+          }
+        }
       }
     }
 

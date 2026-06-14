@@ -55,11 +55,11 @@ export default function LoginPage({ onLogin }: Props) {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="h-14 w-14 bg-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-white font-bold text-xl">BP</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Blessy Packagings</h1>
-          <p className="text-slate-500 text-sm mt-1">Billing System</p>
+          <img
+            src="/Offline-Billing-System/logo-full.png"
+            alt="Blessy Packagings"
+            className="h-28 mx-auto object-contain mb-2"
+          />
         </div>
 
         {/* Card */}

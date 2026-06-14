@@ -39,6 +39,14 @@ export interface InvoiceItem {
   igst: number;
 }
 
+export interface PaymentEntry {
+  id: string;
+  date: Date;
+  amount: number;
+  method: "Cash" | "UPI" | "Cheque" | "Bank Transfer" | "Other";
+  note: string;
+}
+
 export interface Invoice {
   id?: number;
   invoiceNumber: string;
@@ -58,6 +66,10 @@ export interface Invoice {
   isIGST: boolean;
   placeOfSupply: string;
   status: "draft" | "finalized";
+  billType: "gst" | "non-gst" | "quotation";
+  paymentStatus: "unpaid" | "partial" | "paid";
+  paidAmount: number;
+  payments: PaymentEntry[];
   transportMode: string;
   vehicleNumber: string;
   deliveryNote: string;
@@ -140,6 +152,20 @@ class BlessyDB extends Dexie {
       settings: "++id",
     }).upgrade(() => {
       // lastSyncSha and loginPasswordHash added as optional fields — no migration needed
+    });
+
+    this.version(4).stores({
+      customers: "++id, name, gstNumber, createdAt",
+      products: "++id, name, category, hsnCode, createdAt",
+      invoices: "++id, invoiceNumber, invoiceDate, status, billType, paymentStatus, createdAt",
+      settings: "++id",
+    }).upgrade((tx) => {
+      return tx.table("invoices").toCollection().modify((inv: any) => {
+        if (!inv.billType) inv.billType = "gst";
+        if (!inv.paymentStatus) inv.paymentStatus = "unpaid";
+        if (inv.paidAmount === undefined) inv.paidAmount = 0;
+        if (!inv.payments) inv.payments = [];
+      });
     });
   }
 }
