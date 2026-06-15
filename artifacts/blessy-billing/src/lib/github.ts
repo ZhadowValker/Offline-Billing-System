@@ -1,6 +1,8 @@
 /**
  * GitHub JSON Sync Layer
- * Uses Git Data API — one commit per sync covering all changed files.
+ * Uses Git Data API for both reads and writes — no size limits, no CDN cache issues.
+ * Reads: ref → commit → tree → blob (by SHA, always fresh, works on private repos)
+ * Writes: ref → commit → blobs → tree → commit → ref update (one commit for all files)
  */
 
 const API = "https://api.github.com";
@@ -45,32 +47,91 @@ async function api(pat: string, path: string, options?: RequestInit) {
   return res.json();
 }
 
+// ── GIT DATA API READ ─────────────────────────────────────────────────────────
+//
+// Flow: GET ref → GET commit → GET tree (recursive) → GET blob by SHA
+// This bypasses the Contents API 1 MB limit entirely.
+// Fetches blobs by exact SHA so there are zero CDN cache issues.
+// Works on private repos (PAT auth throughout).
+
 /**
- * Write multiple files in a single commit using Git Data API.
- * No SHA conflicts — works purely with commit/tree SHAs.
+ * Fetch the flat file tree for the latest commit on BRANCH.
+ * Returns a map of { filePath → blobSha }.
  */
+async function getTreeMap(
+  config: GitHubConfig
+): Promise<{ commitSha: string; treeMap: Record<string, string> }> {
+  const { pat, repo } = config;
+
+  // 1. Latest commit SHA
+  const refData = await api(pat, `/repos/${repo}/git/ref/heads/${BRANCH}`);
+  const commitSha: string = refData.object.sha;
+
+  // 2. Tree SHA from that commit
+  const commitData = await api(pat, `/repos/${repo}/git/commits/${commitSha}`);
+  const treeSha: string = commitData.tree.sha;
+
+  // 3. Recursive tree — one request gets all blob SHAs
+  const treeData = await api(
+    pat,
+    `/repos/${repo}/git/trees/${treeSha}?recursive=1`
+  );
+
+  const treeMap: Record<string, string> = {};
+  for (const item of treeData.tree ?? []) {
+    if (item.type === "blob") {
+      treeMap[item.path] = item.sha;
+    }
+  }
+
+  return { commitSha, treeMap };
+}
+
+/**
+ * Read a single file via Git Data API blobs endpoint.
+ * No size limit, no CDN cache (fetched by exact blob SHA).
+ */
+async function readFileViaBlob(
+  config: GitHubConfig,
+  filePath: string,
+  blobSha: string
+): Promise<any> {
+  const { pat, repo } = config;
+  const blobData = await api(pat, `/repos/${repo}/git/blobs/${blobSha}`);
+  // GitHub always returns blobs as base64
+  const raw = fromBase64(blobData.content as string);
+  return JSON.parse(raw);
+}
+
+// ── WRITE: one commit for all files ──────────────────────────────────────────
+
 async function writeFilesInOneCommit(
   config: GitHubConfig,
   files: { path: string; content: any }[],
-  message: string
-): Promise<void> {
+  message: string,
+  baseCommitSha?: string,
+  baseTreeSha?: string
+): Promise<string> {
   const { pat, repo } = config;
 
-  // 1. Get latest commit SHA on main
-  const refData = await api(pat, `/repos/${repo}/git/ref/heads/${BRANCH}`);
-  const latestCommitSha: string = refData.object.sha;
+  // Resolve base SHAs if not provided (avoids a redundant ref fetch during pull+push)
+  let latestCommitSha = baseCommitSha;
+  let currentTreeSha = baseTreeSha;
 
-  // 2. Get the base tree SHA
-  const commitData = await api(pat, `/repos/${repo}/git/commits/${latestCommitSha}`);
-  const baseTreeSha: string = commitData.tree.sha;
+  if (!latestCommitSha || !currentTreeSha) {
+    const refData = await api(pat, `/repos/${repo}/git/ref/heads/${BRANCH}`);
+    latestCommitSha = refData.object.sha as string;
+    const commitData = await api(pat, `/repos/${repo}/git/commits/${latestCommitSha}`);
+    currentTreeSha = commitData.tree.sha as string;
+  }
 
-  // 3. Create blobs for all files in parallel
+  // Create blobs — minified JSON to keep file sizes lean
   const blobs = await Promise.all(
     files.map(async (f) => {
       const blob = await api(pat, `/repos/${repo}/git/blobs`, {
         method: "POST",
         body: JSON.stringify({
-          content: toBase64(JSON.stringify(f.content, null, 2)),
+          content: toBase64(JSON.stringify(f.content)), // minified, not pretty-printed
           encoding: "base64",
         }),
       });
@@ -78,11 +139,11 @@ async function writeFilesInOneCommit(
     })
   );
 
-  // 4. Create one new tree with all files updated
+  // New tree
   const treeData = await api(pat, `/repos/${repo}/git/trees`, {
     method: "POST",
     body: JSON.stringify({
-      base_tree: baseTreeSha,
+      base_tree: currentTreeSha,
       tree: blobs.map((b) => ({
         path: b.path,
         mode: "100644",
@@ -92,7 +153,7 @@ async function writeFilesInOneCommit(
     }),
   });
 
-  // 5. Create a single new commit
+  // New commit
   const newCommit = await api(pat, `/repos/${repo}/git/commits`, {
     method: "POST",
     body: JSON.stringify({
@@ -102,34 +163,21 @@ async function writeFilesInOneCommit(
     }),
   });
 
-  // 6. Advance the branch ref
+  // Advance branch ref
   try {
     await api(pat, `/repos/${repo}/git/refs/heads/${BRANCH}`, {
       method: "PATCH",
       body: JSON.stringify({ sha: newCommit.sha, force: false }),
     });
   } catch (e: any) {
-    // Another write raced us — retry once with fresh base
     if (e.message?.includes("not a fast forward")) {
+      // Raced by another write — retry with fresh base
       return writeFilesInOneCommit(config, files, message);
     }
     throw e;
   }
-}
 
-/** Read a JSON file from GitHub */
-async function readFile(
-  config: GitHubConfig,
-  path: string
-): Promise<any | null> {
-  const res = await fetch(
-    `${API}/repos/${config.repo}/contents/${path}?ref=${BRANCH}`,
-    { headers: h(config.pat) }
-  );
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub read failed: ${res.status}`);
-  const data = await res.json();
-  return JSON.parse(fromBase64(data.content));
+  return newCommit.sha as string;
 }
 
 // ── GET LATEST COMMIT SHA ─────────────────────────────────────────────────────
@@ -145,7 +193,11 @@ export async function getLatestSha(pat: string, repo: string): Promise<string | 
 
 // ── PUSH ALL (one commit) ─────────────────────────────────────────────────────
 
-export async function pushAllToGitHub(): Promise<{ success: boolean; error?: string; summary?: string }> {
+export async function pushAllToGitHub(): Promise<{
+  success: boolean;
+  error?: string;
+  summary?: string;
+}> {
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
@@ -157,22 +209,22 @@ export async function pushAllToGitHub(): Promise<{ success: boolean; error?: str
       db.products.toArray(),
     ]);
 
-    const files = [
-      { path: "data/invoices.json", content: invoices },
-      { path: "data/customers.json", content: customers },
-      { path: "data/products.json", content: products },
-    ];
-
     const summary = `${invoices.length} invoices, ${customers.length} customers, ${products.length} products`;
-    await writeFilesInOneCommit(config, files, `sync: ${summary}`);
 
-    // Store the new SHA so pull-on-open skips if unchanged
-    const newSha = await getLatestSha(config.pat, config.repo);
-    if (newSha) {
-      const settings = await db.settings.toArray();
-      if (settings.length && settings[0].id !== undefined) {
-        await db.settings.update(settings[0].id, { lastSyncSha: newSha });
-      }
+    const newSha = await writeFilesInOneCommit(
+      config,
+      [
+        { path: "data/invoices.json", content: invoices },
+        { path: "data/customers.json", content: customers },
+        { path: "data/products.json", content: products },
+      ],
+      `sync: ${summary}`
+    );
+
+    // Store SHA so pull-on-open can skip if nothing changed
+    const settings = await db.settings.toArray();
+    if (settings.length && settings[0].id !== undefined) {
+      await db.settings.update(settings[0].id, { lastSyncSha: newSha });
     }
 
     return { success: true, summary };
@@ -183,7 +235,10 @@ export async function pushAllToGitHub(): Promise<{ success: boolean; error?: str
 
 // ── INVOICE-ONLY SYNC (called on each invoice save) ───────────────────────────
 
-export async function syncInvoicesToGitHub(): Promise<{ success: boolean; error?: string }> {
+export async function syncInvoicesToGitHub(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
   try {
     const config = await getConfig();
     if (!config) return { success: false, error: "GitHub not configured" };
@@ -203,7 +258,7 @@ export async function syncInvoicesToGitHub(): Promise<{ success: boolean; error?
   }
 }
 
-// ── PULL ALL ──────────────────────────────────────────────────────────────────
+// ── PULL ALL (Git Data API — no size limit) ───────────────────────────────────
 
 export async function pullAllFromGitHub(): Promise<{
   success: boolean;
@@ -218,13 +273,23 @@ export async function pullAllFromGitHub(): Promise<{
 
     const { db } = await import("./db");
 
+    // One request to get the full tree (commit SHA + all blob SHAs)
+    const { treeMap } = await getTreeMap(config);
+
+    // Fetch each file in parallel via their exact blob SHA — no size limit
     const [remoteInvoices, remoteCustomers, remoteProducts] = await Promise.all([
-      readFile(config, "data/invoices.json"),
-      readFile(config, "data/customers.json"),
-      readFile(config, "data/products.json"),
+      treeMap["data/invoices.json"]
+        ? readFileViaBlob(config, "data/invoices.json", treeMap["data/invoices.json"])
+        : Promise.resolve(null),
+      treeMap["data/customers.json"]
+        ? readFileViaBlob(config, "data/customers.json", treeMap["data/customers.json"])
+        : Promise.resolve(null),
+      treeMap["data/products.json"]
+        ? readFileViaBlob(config, "data/products.json", treeMap["data/products.json"])
+        : Promise.resolve(null),
     ]);
 
-    if (remoteInvoices) {
+    if (remoteInvoices && remoteInvoices.length > 0) {
       await db.invoices.clear();
       for (const inv of remoteInvoices) {
         await db.invoices.add({
