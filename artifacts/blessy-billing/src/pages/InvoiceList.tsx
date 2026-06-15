@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { db, type Invoice } from "@/lib/db";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -7,24 +7,82 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, FileText, Eye, Edit, Trash2, Download, Receipt, ClipboardList } from "lucide-react";
+import { Plus, Search, FileText, Eye, Edit, Trash2, Download, Receipt, ClipboardList, ChevronDown } from "lucide-react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { generateInvoicePDF } from "@/lib/pdf";
+import { cn } from "@/lib/utils";
+
+// ── New Document dropdown ─────────────────────────────────────────────────────
+function NewDocumentButton() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  const options = [
+    { href: "/invoices/new?type=gst",       icon: <Receipt      className="h-4 w-4 text-blue-600"   />, label: "GST Bill",     desc: "Tax invoice with CGST/SGST",   color: "#1A5FA8" },
+    { href: "/invoices/new?type=non-gst",   icon: <FileText     className="h-4 w-4 text-slate-600"  />, label: "Non-GST Bill", desc: "Simple invoice without tax",    color: "#374151" },
+    { href: "/invoices/new?type=quotation", icon: <ClipboardList className="h-4 w-4 text-amber-600" />, label: "Quotation",    desc: "Price quote for the customer",  color: "#D97706" },
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      {/* Split button */}
+      <div className="flex">
+        <Link href="/invoices/new?type=gst">
+          <button
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-l-lg transition-colors"
+            style={{ background: "#1A5FA8" }}
+            data-testid="button-new-gst"
+          >
+            <Plus className="h-4 w-4" />
+            New Invoice
+          </button>
+        </Link>
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex items-center px-2 py-2 text-white rounded-r-lg border-l border-blue-400 transition-colors hover:opacity-90"
+          style={{ background: "#1A5FA8" }}
+          data-testid="button-new-dropdown"
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
+        </button>
+      </div>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-xl shadow-lg border border-slate-200 z-50 overflow-hidden">
+          {options.map((opt) => (
+            <Link key={opt.href} href={opt.href}>
+              <button
+                className="flex items-start gap-3 w-full px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                onClick={() => setOpen(false)}
+                data-testid={`button-new-${opt.href.split("=")[1]}`}
+              >
+                <div className="mt-0.5 p-1.5 rounded-lg bg-slate-100">{opt.icon}</div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{opt.label}</p>
+                  <p className="text-xs text-slate-500">{opt.desc}</p>
+                </div>
+              </button>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function InvoiceList() {
   const [, setLocation] = useLocation();
@@ -74,12 +132,7 @@ export default function InvoiceList() {
           <h1 className="text-2xl font-bold text-slate-900">Invoices</h1>
           <p className="text-slate-500 text-sm mt-0.5">{invoices.length} total invoices</p>
         </div>
-        <Link href="/invoices/new">
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="button-create-invoice">
-            <Plus className="h-4 w-4" />
-            New Invoice
-          </Button>
-        </Link>
+        <NewDocumentButton />
       </div>
 
       <Card className="border-slate-200">
@@ -138,9 +191,9 @@ export default function InvoiceList() {
             <div className="text-center py-12 text-slate-400">
               <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="text-sm">No invoices found</p>
-              <Link href="/invoices/new">
-                <Button size="sm" className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white">
-                  Create Invoice
+              <Link href="/invoices/new?type=gst">
+                <Button size="sm" className="mt-3 text-white" style={{ background: "#1A5FA8" }}>
+                  Create First Invoice
                 </Button>
               </Link>
             </div>
@@ -149,6 +202,7 @@ export default function InvoiceList() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-8"></th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Invoice No.</th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Buyer</th>
@@ -165,6 +219,13 @@ export default function InvoiceList() {
                       data-testid={`row-invoice-${inv.id}`}
                     >
                       <td className="py-3 px-3">
+                        {inv.billType === "quotation"
+                          ? <ClipboardList className="h-4 w-4 text-amber-500" />
+                          : inv.billType === "non-gst"
+                          ? <FileText className="h-4 w-4 text-slate-400" />
+                          : <Receipt className="h-4 w-4 text-blue-500" />}
+                      </td>
+                      <td className="py-3 px-3">
                         <span className="font-semibold text-slate-900">{inv.invoiceNumber}</span>
                       </td>
                       <td className="py-3 px-3 text-slate-600">{formatDate(inv.invoiceDate)}</td>
@@ -177,19 +238,29 @@ export default function InvoiceList() {
                       <td className="py-3 px-3 text-right font-bold text-slate-900">₹{formatCurrency(inv.totalAmount)}</td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex flex-col gap-1 items-center">
-                          <Badge
-                            className={inv.status === "finalized" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}
-                          >
-                            {inv.status}
-                          </Badge>
-                          <Badge className={
-                            (inv.paymentStatus || "unpaid") === "paid"    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-xs" :
-                            (inv.paymentStatus || "unpaid") === "partial"  ? "bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs" :
-                            "bg-red-100 text-red-600 hover:bg-red-100 text-xs"
-                          }>
-                            {(inv.paymentStatus || "unpaid") === "paid" ? "Paid" :
-                             (inv.paymentStatus || "unpaid") === "partial" ? "Partial" : "Unpaid"}
-                          </Badge>
+                          {inv.billType === "quotation" ? (
+                            <Badge className={
+                              inv.quotationStatus === "accepted" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" :
+                              inv.quotationStatus === "rejected" ? "bg-red-100 text-red-600 hover:bg-red-100" :
+                              "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                            }>
+                              {inv.quotationStatus || "open"}
+                            </Badge>
+                          ) : (
+                            <>
+                              <Badge className={inv.status === "finalized" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}>
+                                {inv.status}
+                              </Badge>
+                              <Badge className={
+                                (inv.paymentStatus || "unpaid") === "paid"    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 text-xs" :
+                                (inv.paymentStatus || "unpaid") === "partial" ? "bg-blue-100 text-blue-700 hover:bg-blue-100 text-xs" :
+                                "bg-red-100 text-red-600 hover:bg-red-100 text-xs"
+                              }>
+                                {(inv.paymentStatus || "unpaid") === "paid" ? "Paid" :
+                                 (inv.paymentStatus || "unpaid") === "partial" ? "Partial" : "Unpaid"}
+                              </Badge>
+                            </>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-3">

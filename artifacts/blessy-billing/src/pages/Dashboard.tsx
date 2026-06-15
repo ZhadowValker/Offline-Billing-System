@@ -6,14 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  TrendingUp,
-  FileText,
-  Users,
-  IndianRupee,
-  Plus,
-  ArrowRight,
-  Clock,
-  CheckCircle2,
+  TrendingUp, FileText, Users, IndianRupee, Plus,
+  ArrowRight, Clock, CheckCircle2, Receipt, ClipboardList,
 } from "lucide-react";
 import {
   BarChart,
@@ -84,11 +78,45 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
           <p className="text-slate-500 text-sm mt-0.5">Welcome back, Blessy Packagings</p>
         </div>
-        <Link href="/invoices/new">
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="button-new-invoice">
-            <Plus className="h-4 w-4" />
-            New Invoice
-          </Button>
+      </div>
+
+      {/* Quick Create */}
+      <div className="grid grid-cols-3 gap-3">
+        <Link href="/invoices/new?type=gst">
+          <div className="group flex items-center gap-3 p-4 bg-white border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl transition-all cursor-pointer" data-testid="quick-create-gst">
+            <div className="p-2.5 rounded-lg group-hover:bg-blue-100 transition-colors" style={{ background: "#EFF6FF" }}>
+              <Receipt className="h-5 w-5" style={{ color: "#1A5FA8" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">GST Bill</p>
+              <p className="text-xs text-slate-500 truncate">Tax invoice</p>
+            </div>
+            <Plus className="h-4 w-4 text-slate-300 group-hover:text-blue-500 flex-shrink-0" />
+          </div>
+        </Link>
+        <Link href="/invoices/new?type=non-gst">
+          <div className="group flex items-center gap-3 p-4 bg-white border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 rounded-xl transition-all cursor-pointer" data-testid="quick-create-non-gst">
+            <div className="p-2.5 bg-slate-100 rounded-lg group-hover:bg-slate-200 transition-colors">
+              <FileText className="h-5 w-5 text-slate-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">Non-GST Bill</p>
+              <p className="text-xs text-slate-500 truncate">Simple invoice</p>
+            </div>
+            <Plus className="h-4 w-4 text-slate-300 group-hover:text-slate-500 flex-shrink-0" />
+          </div>
+        </Link>
+        <Link href="/invoices/new?type=quotation">
+          <div className="group flex items-center gap-3 p-4 bg-white border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50 rounded-xl transition-all cursor-pointer" data-testid="quick-create-quotation">
+            <div className="p-2.5 bg-amber-50 rounded-lg group-hover:bg-amber-100 transition-colors">
+              <ClipboardList className="h-5 w-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">Quotation</p>
+              <p className="text-xs text-slate-500 truncate">Price quote</p>
+            </div>
+            <Plus className="h-4 w-4 text-slate-300 group-hover:text-amber-500 flex-shrink-0" />
+          </div>
         </Link>
       </div>
 
@@ -259,43 +287,54 @@ export default function Dashboard() {
             <div className="text-center py-10 text-slate-400">
               <FileText className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="text-sm">No invoices yet</p>
-              <Link href="/invoices/new">
-                <Button size="sm" className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Link href="/invoices/new?type=gst">
+                <Button size="sm" className="mt-3 text-white" style={{ background: "#1A5FA8" }}>
                   Create First Invoice
                 </Button>
               </Link>
             </div>
           ) : (
             <div className="space-y-2">
-              {recent.map((inv) => (
-                <Link key={inv.id} href={`/invoices/${inv.id}`}>
-                  <div
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
-                    data-testid={`row-invoice-${inv.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-emerald-50 rounded-md">
-                        <FileText className="h-4 w-4 text-emerald-600" />
+              {recent.map((inv) => {
+                const typeIcon =
+                  inv.billType === "quotation" ? <ClipboardList className="h-4 w-4 text-amber-600" /> :
+                  inv.billType === "non-gst"   ? <FileText      className="h-4 w-4 text-slate-500" /> :
+                                                 <Receipt       className="h-4 w-4 text-blue-600"  />;
+                const typeBg =
+                  inv.billType === "quotation" ? "bg-amber-50" :
+                  inv.billType === "non-gst"   ? "bg-slate-100" : "bg-blue-50";
+                return (
+                  <Link key={inv.id} href={`/invoices/${inv.id}`}>
+                    <div
+                      className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                      data-testid={`row-invoice-${inv.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 ${typeBg} rounded-md`}>{typeIcon}</div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{inv.invoiceNumber}</p>
+                          <p className="text-xs text-slate-500">{inv.buyer.name} · {formatDate(inv.invoiceDate)}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{inv.invoiceNumber}</p>
-                        <p className="text-xs text-slate-500">{inv.buyer.name} · {formatDate(inv.invoiceDate)}</p>
-                      </div>
-                    </div>
-                    <div className="text-right flex items-center gap-3">
-                      <div>
+                      <div className="text-right flex items-center gap-3">
                         <p className="text-sm font-bold text-slate-900">₹{formatCurrency(inv.totalAmount)}</p>
+                        <Badge className={
+                          inv.billType === "quotation"
+                            ? inv.quotationStatus === "accepted" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                            : inv.quotationStatus === "rejected" ? "bg-red-100 text-red-600 hover:bg-red-100"
+                            : "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                          : inv.status === "finalized" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100"
+                          : "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                        }>
+                          {inv.billType === "quotation"
+                            ? (inv.quotationStatus || "open")
+                            : inv.status}
+                        </Badge>
                       </div>
-                      <Badge
-                        variant={inv.status === "finalized" ? "default" : "secondary"}
-                        className={inv.status === "finalized" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-amber-100 text-amber-700 hover:bg-amber-100"}
-                      >
-                        {inv.status}
-                      </Badge>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </CardContent>

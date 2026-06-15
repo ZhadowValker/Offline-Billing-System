@@ -25,7 +25,12 @@ function AppRoutes({ syncStatus }: { syncStatus: SyncStatus }) {
         <Route path="/" component={Dashboard} />
         <Route path="/invoices" component={InvoiceList} />
         <Route path="/invoices/new">
-          {() => <InvoiceForm mode="create" />}
+          {() => {
+            const params = new URLSearchParams(window.location.search);
+            const type = (params.get("type") || "gst") as "gst" | "non-gst" | "quotation";
+            const fromQuotation = params.get("fromQuotation");
+            return <InvoiceForm mode="create" initialBillType={type} fromQuotationId={fromQuotation ? Number(fromQuotation) : undefined} />;
+          }}
         </Route>
         <Route path="/invoices/:id/edit">
           {() => <InvoiceForm mode="edit" />}

@@ -17,7 +17,7 @@ import {
 import {
   ArrowLeft, Edit, Download, Printer, Clock, CheckCircle2,
   IndianRupee, Plus, Banknote, CreditCard, Wallet, Building2,
-  Receipt, FileText, ClipboardList,
+  Receipt, FileText, ClipboardList, ArrowRightCircle,
 } from "lucide-react";
 import { generateInvoicePDF } from "@/lib/pdf";
 import { getSettings, type Settings } from "@/lib/db";
@@ -118,6 +118,14 @@ export default function InvoiceView() {
     } finally { setPaying(false); }
   }
 
+  async function handleConvertToInvoice() {
+    if (!invoice?.id) return;
+    // Mark quotation as accepted
+    await db.invoices.update(invoice.id, { quotationStatus: "accepted" });
+    // Navigate to new GST bill form with quotation data pre-filled via URL
+    setLocation(`/invoices/new?type=gst&fromQuotation=${invoice.id}`);
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: "#1A5FA8" }} />
@@ -162,6 +170,17 @@ export default function InvoiceView() {
           </div>
         </div>
         <div className="flex gap-2">
+          {isQuote && (invoice.quotationStatus || "open") !== "rejected" && (
+            <Button
+              size="sm"
+              onClick={handleConvertToInvoice}
+              className="gap-1 text-white"
+              style={{ background: "#059669" }}
+              data-testid="button-convert-to-invoice"
+            >
+              <ArrowRightCircle className="h-4 w-4" /> Convert to GST Bill
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setLocation(`/invoices/${invoice.id}/edit`)} className="gap-1" data-testid="button-edit-invoice">
             <Edit className="h-4 w-4" /> Edit
           </Button>
