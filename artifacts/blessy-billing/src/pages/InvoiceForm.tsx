@@ -270,7 +270,7 @@ export default function InvoiceForm({ mode, initialBillType = "gst", prefillData
       const invData = buildInvoiceData(saveStatus);
       if (mode === "edit" && existingInvoice?.id) {
         const versions = [...(existingInvoice.versions || [])];
-        versions.push({ versionNumber: versions.length + 1, editedAt: new Date(), editNote: "", snapshot: { ...existingInvoice } });
+        versions.push({ versionNumber: versions.length + 1, editedAt: new Date(), editNote: "", snapshot: JSON.parse(JSON.stringify(existingInvoice)) });
         invData.versions = versions;
         await db.invoices.update(existingInvoice.id, invData);
         toast({ title: "Saved" });

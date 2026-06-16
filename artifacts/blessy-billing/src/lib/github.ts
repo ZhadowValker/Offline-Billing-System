@@ -301,6 +301,24 @@ export async function pullAllFromGitHub(): Promise<{
           invoiceDate: new Date(inv.invoiceDate),
           createdAt: new Date(inv.createdAt),
           updatedAt: new Date(inv.updatedAt),
+          payments: (inv.payments || []).map((p: any) => ({
+            ...p,
+            date: new Date(p.date),
+          })),
+          versions: (inv.versions || []).map((v: any) => ({
+            ...v,
+            editedAt: new Date(v.editedAt),
+            snapshot: {
+              ...v.snapshot,
+              invoiceDate: new Date(v.snapshot.invoiceDate),
+              createdAt:   new Date(v.snapshot.createdAt),
+              updatedAt:   new Date(v.snapshot.updatedAt),
+              payments: (v.snapshot.payments || []).map((p: any) => ({
+                ...p,
+                date: new Date(p.date),
+              })),
+            },
+          })),
         });
       }
     }
