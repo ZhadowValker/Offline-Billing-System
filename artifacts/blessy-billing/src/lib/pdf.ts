@@ -139,24 +139,30 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   const META_Y   = y;
   const halfW    = CW / 2;
   const rightX   = ML + halfW + 3;
+  const SELLER_W = halfW - 4; // max width for seller text before wrapping
 
-  // Seller left column
+  // Seller left column — company name
   setFont("bold", 8);
   rgb(...BLUE);
   txt(settings.companyName.toUpperCase(), ML, y + 4);
 
-  const sellerLines = [
+  // Seller detail lines with wrapping so GSTIN line doesn't overflow
+  setFont("normal", 7.5);
+  rgb(80, 80, 80);
+  const sellerRawLines = [
     settings.address,
     `GSTIN/UIN: ${settings.gstNumber} | State Code: ${settings.stateCode} | ${settings.state.toUpperCase()}`,
     `Place of Supply: ${settings.placeOfSupply}`,
     `Tel: ${settings.contact} | ${settings.email}`,
   ];
-  setFont("normal", 7.5);
-  rgb(80, 80, 80);
+  const sellerWrapped: string[] = sellerRawLines.flatMap((l: string) =>
+    (doc.splitTextToSize(l, SELLER_W) as string[])
+  );
   let sy = y + 9;
-  sellerLines.forEach(l => { txt(l, ML, sy); sy += 3.8; });
+  sellerWrapped.forEach((l: string) => { txt(l, ML, sy); sy += 3.6; });
 
-  const metaH = 4 + sellerLines.length * 3.8 + 2;
+  // metaH: name row starts at y+4 (5mm tall) + wrapped lines from y+9 + bottom pad
+  const metaH = 9 + sellerWrapped.length * 3.6 + 3;
 
   vline(ML + halfW, META_Y, META_Y + metaH);
 
@@ -197,9 +203,13 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   txt(invoice.buyer.name, ML, y);
   y += 4.5;
 
-  const addrLines = invoice.buyer.address.split(/\n|,/).filter(Boolean).slice(0, 3);
+  // Split only on newlines (not commas) so address stays intact; wrap to column width
+  const addrLines = invoice.buyer.address.split(/\r?\n/).filter(Boolean);
   setFont("normal", 7.5); rgb(80, 80, 80);
-  addrLines.forEach(l => { txt(l.trim(), ML, y); y += 3.8; });
+  addrLines.forEach(l => {
+    const wrapped: string[] = doc.splitTextToSize(l.trim(), halfW - 4) as string[];
+    wrapped.forEach((wl: string) => { txt(wl, ML, y); y += 3.8; });
+  });
   if (invoice.buyer.state) { txt(invoice.buyer.state, ML, y); y += 3.8; }
   if (hasGST && invoice.buyer.gstNumber) {
     setFont("normal", 7.5); rgb(80, 80, 80); txt("GST NO.: ", ML, y);
