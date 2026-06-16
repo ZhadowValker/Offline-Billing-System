@@ -327,8 +327,10 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
     y += rowH;
   });
 
-  // Pad to at least 195mm
-  if (y < 195) { y = 195; hline(y); }
+  // Gap + separator after items table
+  y += 4;
+  hline(y);
+  y += 2;
 
   // ── TOTALS ────────────────────────────────────────────────────────────────
   const TOT_ROW = 5.8;
@@ -338,7 +340,7 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   const LBL_X   = TOT_X + 2;
   const PCT_X   = TOT_X + 54;
 
-  vline(TOT_X, y, y + TOT_ROW * 8);
+  // Left border of totals column — drawn per totalRow call via hline only
 
   function totalRow(
     label: string, value: string, pct?: string,
