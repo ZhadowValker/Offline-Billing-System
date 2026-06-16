@@ -39,7 +39,7 @@ const BILL_TYPE_CONFIG = {
     label: "GST Bill",
     icon: <Receipt className="h-4 w-4" />,
     color: "#1A5FA8",
-    numberPrefix: (base: string) => base,
+
     docTitle: "TAX INVOICE",
     saveLabel: "Finalize Invoice",
     draftLabel: "Save as Draft",
@@ -48,7 +48,7 @@ const BILL_TYPE_CONFIG = {
     label: "Non-GST Bill",
     icon: <FileText className="h-4 w-4" />,
     color: "#374151",
-    numberPrefix: (base: string) => base.replace(/^BP-/, "BP-NG-"),
+
     docTitle: "INVOICE",
     saveLabel: "Finalize Invoice",
     draftLabel: "Save as Draft",
@@ -57,7 +57,7 @@ const BILL_TYPE_CONFIG = {
     label: "Quotation",
     icon: <ClipboardList className="h-4 w-4" />,
     color: "#D97706",
-    numberPrefix: (base: string) => base.replace(/^BP-/, "BP-QT-"),
+
     docTitle: "QUOTATION",
     saveLabel: "Save Quotation",
     draftLabel: "Save as Draft",
@@ -158,9 +158,9 @@ export default function InvoiceForm({ mode, initialBillType = "gst", prefillData
       setProducts(prods);
 
       if (mode === "create") {
-        const num = await getNextInvoiceNumber();
+        const num = await getNextInvoiceNumber(initialBillType);
         setBaseNumber(num);
-        setInvoiceNumber(cfg.numberPrefix(num));
+        setInvoiceNumber(num);
         const settings = await getSettings();
         setPlaceOfSupply(settings.placeOfSupply || "TELANGANA");
 
@@ -276,7 +276,7 @@ export default function InvoiceForm({ mode, initialBillType = "gst", prefillData
         toast({ title: "Saved" });
       } else {
         await db.invoices.add(invData);
-        await incrementInvoiceNumber();
+        await incrementInvoiceNumber(billType);
         toast({ title: isQuote ? "Quotation created" : "Invoice created" });
       }
       syncInvoicesToGitHub().then((r) => { if (r.success) toast({ title: "✓ Synced to GitHub" }); });
@@ -295,7 +295,7 @@ export default function InvoiceForm({ mode, initialBillType = "gst", prefillData
         savedInv = { ...invData, id: existingInvoice.id };
       } else {
         const id = await db.invoices.add(invData);
-        await incrementInvoiceNumber();
+        await incrementInvoiceNumber(billType);
         savedInv = { ...invData, id };
       }
       await generateInvoicePDF(savedInv);

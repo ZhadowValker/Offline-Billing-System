@@ -114,6 +114,9 @@ export interface Settings {
   invoicePrefix: string;
   financialYearStart: number;
   nextInvoiceNumber: number;
+  nextGstInvoiceNumber: number;
+  nextNonGstInvoiceNumber: number;
+  nextQuotationNumber: number;
   githubPat?: string;
   githubRepo?: string;
   lastSyncSha?: string;
@@ -167,6 +170,25 @@ class BlessyDB extends Dexie {
         if (!inv.payments) inv.payments = [];
       });
     });
+
+    // Version 5: per-type invoice counters
+    this.version(5).stores({
+      customers: "++id, name, gstNumber, createdAt",
+      products: "++id, name, category, hsnCode, createdAt",
+      invoices: "++id, invoiceNumber, invoiceDate, status, billType, paymentStatus, createdAt",
+      settings: "++id",
+    }).upgrade(async (tx) => {
+      // Seed per-type counters from existing nextInvoiceNumber so sequence doesn't reset
+      const settingsRows = await tx.table("settings").toArray();
+      for (const s of settingsRows) {
+        const next = s.nextInvoiceNumber || 1;
+        await tx.table("settings").update(s.id, {
+          nextGstInvoiceNumber: next,
+          nextNonGstInvoiceNumber: 1,
+          nextQuotationNumber: 1,
+        });
+      }
+    });
   }
 }
 
@@ -195,29 +217,52 @@ export async function getSettings(): Promise<Settings> {
     invoicePrefix: "BP",
     financialYearStart: 2026,
     nextInvoiceNumber: 1,
+    nextGstInvoiceNumber: 1,
+    nextNonGstInvoiceNumber: 1,
+    nextQuotationNumber: 1,
   };
 
   const id = await db.settings.add(defaults);
   return { ...defaults, id };
 }
 
-export async function getNextInvoiceNumber(): Promise<string> {
+export async function getNextInvoiceNumber(
+  billType: "gst" | "non-gst" | "quotation" = "gst"
+): Promise<string> {
   const settings = await getSettings();
   // Financial year: April start. e.g. FY 2026-27 → "26-27"
   const today = new Date();
   const calYear = today.getFullYear();
   const fyStart = today.getMonth() >= 3 ? calYear : calYear - 1; // April = month 3
   const fyShort = `${String(fyStart).slice(2)}-${String(fyStart + 1).slice(2)}`;
-  const num = String(settings.nextInvoiceNumber).padStart(4, "0");
-  return `${settings.invoicePrefix}-${fyShort}-${num}`;
+
+  const counterKey =
+    billType === "gst"     ? "nextGstInvoiceNumber"    :
+    billType === "non-gst" ? "nextNonGstInvoiceNumber" :
+                              "nextQuotationNumber";
+
+  const raw = (settings as any)[counterKey] ?? settings.nextInvoiceNumber ?? 1;
+  const num = String(raw).padStart(4, "0");
+
+  const prefix =
+    billType === "gst"     ? settings.invoicePrefix :
+    billType === "non-gst" ? `${settings.invoicePrefix}-NG` :
+                              `${settings.invoicePrefix}-QT`;
+
+  return `${prefix}-${fyShort}-${num}`;
 }
 
-export async function incrementInvoiceNumber(): Promise<void> {
+export async function incrementInvoiceNumber(
+  billType: "gst" | "non-gst" | "quotation" = "gst"
+): Promise<void> {
   const settings = await getSettings();
   if (settings.id !== undefined) {
-    await db.settings.update(settings.id, {
-      nextInvoiceNumber: settings.nextInvoiceNumber + 1,
-    });
+    const counterKey =
+      billType === "gst"     ? "nextGstInvoiceNumber"    :
+      billType === "non-gst" ? "nextNonGstInvoiceNumber" :
+                                "nextQuotationNumber";
+    const current = (settings as any)[counterKey] ?? settings.nextInvoiceNumber ?? 1;
+    await db.settings.update(settings.id, { [counterKey]: current + 1 });
   }
 }
 

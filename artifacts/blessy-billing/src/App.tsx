@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,6 +18,23 @@ import { syncOnOpen, type SyncStatus } from "@/lib/sync";
 
 const queryClient = new QueryClient();
 
+// Loads the invoice first to pass billType to InvoiceForm — prevents Non-GST/Quotation
+// from being treated as GST on edit.
+function EditInvoiceWrapper({ id }: { id: string }) {
+  const [billType, setBillType] = useState<"gst" | "non-gst" | "quotation" | null>(null);
+
+  useEffect(() => {
+    import("@/lib/db").then(({ db }) => {
+      db.invoices.get(Number(id)).then((inv) => {
+        setBillType((inv?.billType as any) || "gst");
+      });
+    });
+  }, [id]);
+
+  if (!billType) return null; // loading
+  return <InvoiceForm mode="edit" initialBillType={billType} />;
+}
+
 function AppRoutes({ syncStatus }: { syncStatus: SyncStatus }) {
   return (
     <Layout syncStatus={syncStatus}>
@@ -33,7 +50,7 @@ function AppRoutes({ syncStatus }: { syncStatus: SyncStatus }) {
           }}
         </Route>
         <Route path="/invoices/:id/edit">
-          {() => <InvoiceForm mode="edit" />}
+          {(params) => <EditInvoiceWrapper id={params.id} />}
         </Route>
         <Route path="/invoices/:id" component={InvoiceView} />
         <Route path="/customers" component={Customers} />
