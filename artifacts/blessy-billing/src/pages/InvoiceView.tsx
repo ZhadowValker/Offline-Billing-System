@@ -18,8 +18,10 @@ import {
   ArrowLeft, Edit, Download, Printer, Clock, CheckCircle2,
   IndianRupee, Plus, Banknote, CreditCard, Wallet, Building2,
   Receipt, FileText, ClipboardList, ArrowRightCircle, History,
-  RotateCcw, AlertTriangle,
+  RotateCcw, AlertTriangle, GitCompare, X,
 } from "lucide-react";
+import InvoiceDiff from "@/components/InvoiceDiff";
+import { versionLabel } from "@/lib/diff";
 import { generateInvoicePDF } from "@/lib/pdf";
 import { getSettings, type Settings } from "@/lib/db";
 import { syncInvoicesToGitHub } from "@/lib/github";
@@ -60,71 +62,185 @@ function MethodIcon({ method }: { method: string }) {
   return <>{icons[method] || icons["Other"]}</>;
 }
 
-// ── Version pill bar ──────────────────────────────────────────────────────────
+// ── Version pill bar (with compare mode) ─────────────────────────────────────
 function VersionPillBar({
   invoice,
   activeIndex,
   onSelect,
+  compareMode,
+  compareLeft,
+  compareRight,
+  onToggleCompareMode,
+  onSetCompareLeft,
+  onSetCompareRight,
+  onStartDiff,
 }: {
   invoice: Invoice;
   activeIndex: number | null;
   onSelect: (index: number | null) => void;
+  compareMode: boolean;
+  compareLeft: number | null;
+  compareRight: number | null;
+  onToggleCompareMode: () => void;
+  onSetCompareLeft: (i: number | null) => void;
+  onSetCompareRight: (i: number | null) => void;
+  onStartDiff: () => void;
 }) {
   if (!invoice.versions || invoice.versions.length === 0) return null;
 
-  const totalVersions = invoice.versions.length + 1; // past + current
+  const totalVersions = invoice.versions.length + 1;
+
+  // Build all version options: past versions + current
+  const allOptions: { index: number | null; label: string }[] = [
+    ...invoice.versions.map((v, idx) => ({
+      index: idx as number | null,
+      label: `v${v.versionNumber} · ${formatDate(new Date(v.editedAt))}`,
+    })),
+    { index: null, label: `v${totalVersions} · Current` },
+  ];
 
   return (
     <Card className="border-slate-200">
       <CardHeader className="pb-2 pt-4">
-        <CardTitle className="text-sm flex items-center gap-2 text-slate-600">
-          <History className="h-4 w-4" />
-          Edit History
-          <span className="text-xs font-normal text-slate-400">
-            — {invoice.versions.length} edit{invoice.versions.length !== 1 ? "s" : ""}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pb-4">
-        <div className="flex flex-wrap gap-2">
-          {/* Past version pills */}
-          {invoice.versions.map((v, idx) => {
-            const isActive = activeIndex === idx;
-            return (
-              <button
-                key={v.versionNumber}
-                onClick={() => onSelect(idx)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                  isActive
-                    ? "bg-slate-700 text-white border-slate-700 shadow-sm"
-                    : "bg-white text-slate-600 border-slate-300 hover:border-slate-500 hover:text-slate-800"
-                )}
-              >
-                <Clock className="h-3 w-3" />
-                v{v.versionNumber}
-                <span className={cn("font-normal", isActive ? "text-slate-300" : "text-slate-400")}>
-                  · {formatDate(new Date(v.editedAt))}
-                </span>
-              </button>
-            );
-          })}
-
-          {/* Current pill */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-slate-600">
+            <History className="h-4 w-4" />
+            Edit History
+            <span className="text-xs font-normal text-slate-400">
+              — {invoice.versions.length} edit{invoice.versions.length !== 1 ? "s" : ""}
+            </span>
+          </CardTitle>
           <button
-            onClick={() => onSelect(null)}
+            onClick={onToggleCompareMode}
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-              activeIndex === null
+              compareMode
                 ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                 : "bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600"
             )}
           >
-            <CheckCircle2 className="h-3 w-3" />
-            v{totalVersions} · Current
-            {activeIndex === null && <span className="text-blue-200 font-normal">✓</span>}
+            <GitCompare className="h-3.5 w-3.5" />
+            {compareMode ? "Exit Compare" : "Compare Versions"}
           </button>
         </div>
+      </CardHeader>
+
+      <CardContent className="pb-4">
+        {!compareMode ? (
+          /* ── Normal view mode pills ── */
+          <div className="flex flex-wrap gap-2">
+            {invoice.versions.map((v, idx) => {
+              const isActive = activeIndex === idx;
+              return (
+                <button
+                  key={v.versionNumber}
+                  onClick={() => onSelect(idx)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                    isActive
+                      ? "bg-slate-700 text-white border-slate-700 shadow-sm"
+                      : "bg-white text-slate-600 border-slate-300 hover:border-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <Clock className="h-3 w-3" />
+                  v{v.versionNumber}
+                  <span className={cn("font-normal", isActive ? "text-slate-300" : "text-slate-400")}>
+                    · {formatDate(new Date(v.editedAt))}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              onClick={() => onSelect(null)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+                activeIndex === null
+                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                  : "bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600"
+              )}
+            >
+              <CheckCircle2 className="h-3 w-3" />
+              v{totalVersions} · Current
+              {activeIndex === null && <span className="text-blue-200 font-normal">✓</span>}
+            </button>
+          </div>
+        ) : (
+          /* ── Compare selector ── */
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">Select two versions to compare — older on the left, newer on the right.</p>
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Left selector */}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-red-600 uppercase tracking-wide">Before (left)</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {allOptions.map((opt) => (
+                    <button
+                      key={String(opt.index)}
+                      onClick={() => onSetCompareLeft(opt.index)}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all",
+                        compareLeft === opt.index
+                          ? "bg-red-500 text-white border-red-500 shadow-sm"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-red-300 hover:text-red-600"
+                      )}
+                    >
+                      {opt.index === null
+                        ? <CheckCircle2 className="h-3 w-3" />
+                        : <Clock className="h-3 w-3" />}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <span className="text-slate-300 text-lg font-light self-end mb-1">→</span>
+
+              {/* Right selector */}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">After (right)</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {allOptions.map((opt) => (
+                    <button
+                      key={String(opt.index)}
+                      onClick={() => onSetCompareRight(opt.index)}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all",
+                        compareRight === opt.index
+                          ? "bg-emerald-500 text-white border-emerald-500 shadow-sm"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-600"
+                      )}
+                    >
+                      {opt.index === null
+                        ? <CheckCircle2 className="h-3 w-3" />
+                        : <Clock className="h-3 w-3" />}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Compare action */}
+            <div className="flex items-center gap-3 pt-1">
+              <Button
+                size="sm"
+                onClick={onStartDiff}
+                disabled={compareLeft === compareRight}
+                className="gap-1.5 text-xs"
+                style={{ background: "#1A5FA8" }}
+              >
+                <GitCompare className="h-3.5 w-3.5" />
+                Show Diff
+              </Button>
+              {compareLeft !== null && compareRight !== null && compareLeft === compareRight && (
+                <span className="text-xs text-amber-600">Select two different versions to compare.</span>
+              )}
+              {compareLeft === null && compareRight === null && (
+                <span className="text-xs text-slate-400">Select a "Before" and "After" version above.</span>
+              )}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -175,6 +291,12 @@ export default function InvoiceView() {
   // Version state — null = live current, number = index into invoice.versions[]
   const [activeVersionIndex, setActiveVersionIndex] = useState<number | null>(null);
 
+  // Compare / diff state
+  const [compareMode,   setCompareMode]   = useState(false);
+  const [compareLeft,   setCompareLeft]   = useState<number | null>(0);   // default: first past version
+  const [compareRight,  setCompareRight]  = useState<number | null>(null); // default: current
+  const [showDiff,      setShowDiff]      = useState(false);
+
   // Payment dialog
   const [payDialog, setPayDialog] = useState(false);
   const [payAmount, setPayAmount] = useState("");
@@ -196,7 +318,11 @@ export default function InvoiceView() {
   useEffect(() => { load(); }, [params.id]);
 
   // Reset version selection when navigating to a different invoice
-  useEffect(() => { setActiveVersionIndex(null); }, [params.id]);
+  useEffect(() => {
+    setActiveVersionIndex(null);
+    setCompareMode(false);
+    setShowDiff(false);
+  }, [params.id]);
 
   async function handleAddPayment() {
     if (!invoice?.id || !payAmount || Number(payAmount) <= 0) return;
@@ -339,7 +465,22 @@ export default function InvoiceView() {
       <VersionPillBar
         invoice={invoice}
         activeIndex={activeVersionIndex}
-        onSelect={setActiveVersionIndex}
+        onSelect={(idx) => { setActiveVersionIndex(idx); setShowDiff(false); }}
+        compareMode={compareMode}
+        compareLeft={compareLeft}
+        compareRight={compareRight}
+        onToggleCompareMode={() => {
+          setCompareMode(!compareMode);
+          setShowDiff(false);
+          // Smart defaults: left = oldest past version, right = current
+          if (!compareMode && invoice.versions?.length > 0) {
+            setCompareLeft(0);
+            setCompareRight(null);
+          }
+        }}
+        onSetCompareLeft={setCompareLeft}
+        onSetCompareRight={setCompareRight}
+        onStartDiff={() => setShowDiff(true)}
       />
 
       {/* ── Past version banner ── */}
@@ -351,8 +492,18 @@ export default function InvoiceView() {
         />
       )}
 
-      {/* ── Payment panel — hidden when viewing past version ── */}
-      {!isViewingPast && (
+      {/* ── Diff viewer (replaces invoice preview when active) ── */}
+      {showDiff && compareMode && (
+        <InvoiceDiff
+          invoice={invoice}
+          leftIndex={compareLeft}
+          rightIndex={compareRight}
+          onClose={() => { setShowDiff(false); setCompareMode(false); }}
+        />
+      )}
+
+      {/* ── Payment panel — hidden when viewing past version or diff ── */}
+      {!isViewingPast && !showDiff && (
         <Card className="border-slate-200">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -418,7 +569,8 @@ export default function InvoiceView() {
         </Card>
       )}
 
-      {/* ── Invoice preview card — driven by displayInvoice ── */}
+      {/* ── Invoice preview card — hidden in diff view ── */}
+      {!showDiff && (
       <Card className={cn("border-slate-200", isViewingPast && "ring-2 ring-amber-200")} id="invoice-preview">
         <CardContent className="p-0">
 
@@ -576,6 +728,7 @@ export default function InvoiceView() {
           </div>
         </CardContent>
       </Card>
+      )} {/* end !showDiff */}
 
       {/* ── Add Payment Dialog ── */}
       <Dialog open={payDialog} onOpenChange={setPayDialog}>
