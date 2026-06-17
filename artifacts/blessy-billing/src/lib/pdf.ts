@@ -198,7 +198,7 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   setFont("bold", 6.5); rgb(255, 255, 255);
   txt("BILL TO", ML + 8, y + 3.3, "center");
 
-  y += 7.5;  // increased from 6 → 7.5 so buyer name clears the pill bottom
+  y += 9.5;  // increased from 6 → 9.5 so buyer name clears the pill bottom
   setFont("bold", 9.5); rgb(20, 20, 20);
   txt(invoice.buyer.name, ML, y);
   y += 4.5;
