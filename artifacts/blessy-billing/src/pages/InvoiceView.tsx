@@ -86,9 +86,8 @@ function VersionPillBar({
   onSetCompareRight: (i: number | null) => void;
   onStartDiff: () => void;
 }) {
-  if (!invoice.versions || invoice.versions.length === 0) return null;
-
-  const totalVersions = invoice.versions.length + 1;
+  const hasVersions   = invoice.versions && invoice.versions.length > 0;
+  const totalVersions = (invoice.versions?.length ?? 0) + 1;
 
   // Build all version options: past versions + current
   const allOptions: { index: number | null; label: string }[] = [
@@ -112,11 +111,15 @@ function VersionPillBar({
           </CardTitle>
           <button
             onClick={onToggleCompareMode}
+            disabled={!hasVersions}
+            title={!hasVersions ? "Edit this invoice at least once to enable version comparison" : ""}
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-              compareMode
-                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                : "bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600"
+              !hasVersions
+                ? "opacity-40 cursor-not-allowed bg-white text-slate-400 border-slate-200"
+                : compareMode
+                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                  : "bg-white text-slate-600 border-slate-300 hover:border-blue-400 hover:text-blue-600"
             )}
           >
             <GitCompare className="h-3.5 w-3.5" />
@@ -126,7 +129,12 @@ function VersionPillBar({
       </CardHeader>
 
       <CardContent className="pb-4">
-        {!compareMode ? (
+        {!hasVersions ? (
+          /* ── No history yet ── */
+          <p className="text-xs text-slate-400 italic">
+            No edit history yet. Edit and save this invoice to start tracking versions.
+          </p>
+        ) : !compareMode ? (
           /* ── Normal view mode pills ── */
           <div className="flex flex-wrap gap-2">
             {invoice.versions.map((v, idx) => {
@@ -240,8 +248,8 @@ function VersionPillBar({
               )}
             </div>
           </div>
-        )}
-      </CardContent>
+        )} {/* end compareMode */}
+        </CardContent>
     </Card>
   );
 }
