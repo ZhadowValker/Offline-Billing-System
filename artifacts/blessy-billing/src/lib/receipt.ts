@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import { Invoice } from "../types";
 import { convertNumberToWords } from "./numberToWords";
 
-export function generateReceipt(invoice: Invoice): void {
+export function generateReceiptPDF(invoice: Invoice): void {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
