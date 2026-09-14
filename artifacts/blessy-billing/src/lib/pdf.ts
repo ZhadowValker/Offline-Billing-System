@@ -151,7 +151,7 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
   rgb(80, 80, 80);
   const sellerRawLines = [
     settings.address,
-    `GSTIN/UIN: ${settings.gstNumber} | State Code: ${settings.stateCode} | ${settings.state.toUpperCase()}`,
+    ...(hasGST ? [`GSTIN/UIN: ${settings.gstNumber} | State Code: ${settings.stateCode} | ${settings.state.toUpperCase()}`] : []),
     `Place of Supply: ${settings.placeOfSupply}`,
     `Tel: ${settings.contact} | ${settings.email}`,
   ];
@@ -383,14 +383,14 @@ export async function generateInvoicePDF(invoice: Invoice): Promise<void> {
     );
     totalRow("Total After Tax", `Rs. ${Math.round(invoice.subtotal + invoice.taxTotal).toLocaleString("en-IN")}`, undefined, true, [236, 244, 252]);
   } else {
-    totalRow("Subtotal", `Rs. ${Math.round(invoice.subtotal).toLocaleString("en-IN")}`);
+    totalRow("Total", `Rs. ${Math.round(invoice.subtotal).toLocaleString("en-IN")}`);
   }
 
   if (invoice.otherCharges > 0) {
     totalRow(invoice.otherChargesLabel || "Other Charges", `Rs. ${Math.round(invoice.otherCharges).toLocaleString("en-IN")}`);
   }
 
-  // Grand total — blue background
+  // Grand total — blue background (shown for both GST and Non-GST)
   const GT_H = TOT_ROW + 1;
   filledRect(ML, y, CW, GT_H, ...BLUE);
   setFont("bold", 9.5); rgb(255, 255, 255);
