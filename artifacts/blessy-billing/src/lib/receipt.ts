@@ -28,9 +28,12 @@ export async function generateReceiptPDF(invoice: Invoice): Promise<void> {
 
   function hrDashes(yPos: number, char: string = "-") {
     setFont("normal", 9);
-    const charWidth = 2.6;
-    const dashCount = Math.floor(CW / charWidth);
-    const line = char.repeat(dashCount);
+    // Measure actual glyph width instead of guessing, so the line
+    // reliably reaches the right margin regardless of font metrics.
+    let line = "";
+    while (doc.getTextWidth(line + char) <= CW) {
+      line += char;
+    }
     doc.text(line, LM, yPos);
   }
 
@@ -42,10 +45,14 @@ export async function generateReceiptPDF(invoice: Invoice): Promise<void> {
   y += 5;
 
   setFont("normal", 8);
-  if (settings.address) {
-    doc.text(settings.address, PAGE_W / 2, y, { align: "center" });
+  const companyAddressLines = (settings.address || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  companyAddressLines.forEach((line) => {
+    doc.text(line, PAGE_W / 2, y, { align: "center" });
     y += 3;
-  }
+  });
 
   const contactLine = [settings.contact, settings.email]
     .filter(Boolean)
