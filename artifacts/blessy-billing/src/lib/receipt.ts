@@ -1,8 +1,11 @@
 import jsPDF from "jspdf";
-import { Invoice } from "../types";
+import type { Invoice } from "./db";
+import { getSettings } from "./db";
 import { convertNumberToWords } from "./numberToWords";
 
-export function generateReceiptPDF(invoice: Invoice): void {
+export async function generateReceiptPDF(invoice: Invoice): Promise<void> {
+  const settings = await getSettings();
+
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -18,24 +21,9 @@ export function generateReceiptPDF(invoice: Invoice): void {
 
   let y = PAGE_H - TM;
 
-  // Helper functions
-  function setFont(style: string, size: number) {
+  function setFont(style: "normal" | "bold", size: number) {
     doc.setFont("courier", style);
     doc.setFontSize(size);
-  }
-
-  function txt(
-    text: string,
-    x: number,
-    yPos: number,
-    size: number = 9,
-    bold: boolean = false,
-    align: "left" | "center" | "right" = "left"
-  ) {
-    const font = bold ? "courier" : "courier";
-    const weight = bold ? "bold" : "normal";
-    setFont(weight, size);
-    doc.text(text, x, yPos, { align });
   }
 
   function hrDashes(yPos: number, char: string = "-") {
@@ -48,18 +36,26 @@ export function generateReceiptPDF(invoice: Invoice): void {
 
   // HEADER
   setFont("bold", 12);
-  doc.text("BLESSY PACKAGINGS", PAGE_W / 2, y, { align: "center" });
+  doc.text((settings.companyName || "").toUpperCase(), PAGE_W / 2, y, {
+    align: "center",
+  });
   y -= 5;
 
   setFont("normal", 8);
-  doc.text("H.NO.: 413 FF, PJR NAGAR, YELLAMABANDA.", PAGE_W / 2, y, {
-    align: "center",
-  });
-  y -= 3;
+  if (settings.address) {
+    doc.text(settings.address, PAGE_W / 2, y, { align: "center" });
+    y -= 3;
+  }
 
-  doc.text("Tel: +91-9000000000", PAGE_W / 2, y, { align: "center" });
-  y -= 4.5;
+  const contactLine = [settings.contact, settings.email]
+    .filter(Boolean)
+    .join(" | ");
+  if (contactLine) {
+    doc.text(contactLine, PAGE_W / 2, y, { align: "center" });
+    y -= 3;
+  }
 
+  y -= 1.5;
   hrDashes(y);
   y -= 4.5;
 
@@ -81,15 +77,16 @@ export function generateReceiptPDF(invoice: Invoice): void {
   y -= 3;
 
   setFont("normal", 8);
-  doc.text(invoice.buyerName, LM, y);
+  doc.text(invoice.buyer?.name || "", LM, y);
   y -= 3;
 
-  const buyerAddr = invoice.buyerAddress || "";
+  const buyerAddr = invoice.buyer?.address || "";
   const addressLines = doc.splitTextToSize(buyerAddr, CW - 10);
   if (addressLines.length > 0) {
     doc.text(addressLines[0], LM, y);
+    y -= 3;
   }
-  y -= 3.5;
+  y -= 0.5;
 
   hrDashes(y);
   y -= 4;
@@ -108,15 +105,17 @@ export function generateReceiptPDF(invoice: Invoice): void {
   // ITEMS
   setFont("normal", 8);
   invoice.items.forEach((item) => {
-    const itemName = item.itemName || "";
+    const itemName = item.productName || "";
     const qty = item.quantity || 0;
     const rate = item.rate || 0;
-    const amount = qty * rate;
+    const amount = item.amount ?? qty * rate;
 
     doc.text(itemName, LM, y);
-    doc.text(qty.toString(), LM + 90, y, { align: "center" });
-    doc.text(rate.toString(), LM + 120, y, { align: "center" });
-    doc.text(amount.toString(), PAGE_W - RM, y, { align: "right" });
+    doc.text(String(qty), LM + 90, y, { align: "center" });
+    doc.text(String(rate), LM + 120, y, { align: "center" });
+    doc.text(Math.round(amount).toLocaleString("en-IN"), PAGE_W - RM, y, {
+      align: "right",
+    });
     y -= 4;
   });
 
@@ -125,33 +124,43 @@ export function generateReceiptPDF(invoice: Invoice): void {
 
   // TOTALS
   setFont("normal", 8);
-  const subtotal = invoice.items.reduce((sum, item) => {
-    return sum + (item.quantity || 0) * (item.rate || 0);
-  }, 0);
-
   doc.text("Subtotal", LM, y);
-  doc.text(`Rs. ${subtotal.toLocaleString("en-IN")}`, PAGE_W - RM, y, {
-    align: "right",
-  });
+  doc.text(
+    `Rs. ${Math.round(invoice.subtotal).toLocaleString("en-IN")}`,
+    PAGE_W - RM,
+    y,
+    { align: "right" }
+  );
   y -= 3;
 
-  const freight = invoice.freight || 0;
-  doc.text("FREIGHT", LM, y);
-  doc.text(`Rs. ${freight.toLocaleString("en-IN")}`, PAGE_W - RM, y, {
-    align: "right",
-  });
-  y -= 3.5;
+  if (invoice.otherCharges > 0) {
+    doc.text(
+      (invoice.otherChargesLabel || "OTHER CHARGES").toUpperCase(),
+      LM,
+      y
+    );
+    doc.text(
+      `Rs. ${Math.round(invoice.otherCharges).toLocaleString("en-IN")}`,
+      PAGE_W - RM,
+      y,
+      { align: "right" }
+    );
+    y -= 3;
+  }
 
+  y -= 0.5;
   hrDashes(y, "=");
   y -= 3.5;
 
   // GRAND TOTAL
-  const total = subtotal + freight;
   setFont("bold", 9);
   doc.text("TOTAL", LM, y);
-  doc.text(`Rs. ${total.toLocaleString("en-IN")}`, PAGE_W - RM, y, {
-    align: "right",
-  });
+  doc.text(
+    `Rs. ${Math.round(invoice.totalAmount).toLocaleString("en-IN")}`,
+    PAGE_W - RM,
+    y,
+    { align: "right" }
+  );
   y -= 4;
 
   // AMOUNT IN WORDS
@@ -160,9 +169,17 @@ export function generateReceiptPDF(invoice: Invoice): void {
   y -= 2.5;
 
   setFont("bold", 8);
-  const amountInWords = convertNumberToWords(Math.floor(total));
-  doc.text(amountInWords.toUpperCase() + " ONLY", LM, y);
-  y -= 3.5;
+  const rawWords =
+    invoice.totalInWords ||
+    convertNumberToWords(Math.round(invoice.totalAmount));
+  const wordsTxt = rawWords.toUpperCase().trim();
+  const wordsFinal = wordsTxt.endsWith("ONLY") ? wordsTxt : `${wordsTxt} ONLY`;
+  const wordsLines = doc.splitTextToSize(wordsFinal, CW);
+  wordsLines.forEach((line: string) => {
+    doc.text(line, LM, y);
+    y -= 3;
+  });
+  y -= 0.5;
 
   hrDashes(y);
   y -= 3.5;
