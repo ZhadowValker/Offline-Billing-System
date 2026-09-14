@@ -297,7 +297,6 @@ export async function pullAllFromGitHub(): Promise<{
           billType: inv.billType || "gst",
           paymentStatus: inv.paymentStatus || "unpaid",
           paidAmount: inv.paidAmount || 0,
-          payments: inv.payments || [],
           invoiceDate: new Date(inv.invoiceDate),
           createdAt: new Date(inv.createdAt),
           updatedAt: new Date(inv.updatedAt),
