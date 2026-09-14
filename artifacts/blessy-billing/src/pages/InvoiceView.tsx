@@ -23,6 +23,7 @@ import {
 import InvoiceDiff from "@/components/InvoiceDiff";
 import { versionLabel } from "@/lib/diff";
 import { generateInvoicePDF } from "@/lib/pdf";
+import { generateReceiptPDF } from "@/lib/receipt";
 import { getSettings, type Settings } from "@/lib/db";
 import { syncInvoicesToGitHub } from "@/lib/github";
 import { useToast } from "@/hooks/use-toast";
@@ -457,6 +458,18 @@ export default function InvoiceView() {
           >
             <Download className="h-4 w-4" /> PDF
           </Button>
+
+          {/* Receipt — only for Non-GST invoices */}
+          {displayInvoice.billType === "non-gst" && (
+            <Button
+              variant="outline" size="sm"
+              onClick={() => generateReceiptPDF(displayInvoice)}
+              className="gap-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+              data-testid="button-receipt"
+            >
+              <Receipt className="h-4 w-4" /> Receipt
+            </Button>
+          )}
 
           <Button
             variant="outline" size="sm"
